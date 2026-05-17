@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.zhcw.com)",
+      "Bash(python -c \"import requests, bs4, tkinter; print\\('all available'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
