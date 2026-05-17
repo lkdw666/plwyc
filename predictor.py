@@ -19,6 +19,34 @@ HEADERS = {
     "Referer": "https://www.zhcw.com/kjxx/pl5/",
 }
 
+# 每元投注的赔付倍数
+PAYOUT_RATIO = {
+    "二定": 96,
+    "三定": 960,
+    "四定": 9600,
+    "二现": 9,
+    "三现": 45,
+    "四现": 320,
+}
+
+# 现玩法理论概率：选 N 个不同数字，全部出现在 4 位开奖号中
+# 用容斥原理：P = 1 - C(N,1)(9/10)^4 + C(N,2)(8/10)^4 - ...
+PROB_XIAN = {
+    2: 0.0974,
+    3: 0.0204,
+    4: 0.0024,
+}
+
+# 预算分配权重 (按风险/期望值平衡)
+ALLOC_WEIGHTS = {
+    "二定包码": 0.15,
+    "三定包码": 0.25,
+    "四定包码": 0.15,
+    "二现":     0.10,
+    "三现":     0.25,
+    "四现":     0.10,
+}
+
 
 # ============================================================
 # 数据爬取
@@ -245,6 +273,113 @@ def make_recommendations(predictor: Predictor):
 
 
 # ============================================================
+# 预算分配
+# ============================================================
+def calculate_budget_plans(budget: float, rec: dict):
+    """根据预算和推荐方案，给每种玩法分配投注金额。
+
+    返回 dict: 玩法名 -> {倍数, 组合数, 实际投入, 命中概率, 中奖金额, 单注赔付}
+    特殊键 __total__ 存放合计实际投入。
+    """
+    if budget <= 0:
+        return {"__total__": 0.0}
+
+    # 各定位包码的组合数
+    bao_combos = {}
+    for name in ["二定", "三定", "四定"]:
+        n = 1
+        for _, ds in rec[name]["包码"]:
+            n *= len(ds)
+        bao_combos[name] = n
+
+    # 每种"投注单元"的元数据：单份成本 / 单注赔付 / 命中概率（命中即至少一注中）
+    schemes = {
+        "二定包码": {
+            "组合数": bao_combos["二定"],
+            "单份成本": round(bao_combos["二定"] * 0.1, 2),
+            "单注赔付": 0.1 * PAYOUT_RATIO["二定"],
+            "命中概率": bao_combos["二定"] / 100.0,
+        },
+        "三定包码": {
+            "组合数": bao_combos["三定"],
+            "单份成本": round(bao_combos["三定"] * 0.1, 2),
+            "单注赔付": 0.1 * PAYOUT_RATIO["三定"],
+            "命中概率": bao_combos["三定"] / 1000.0,
+        },
+        "四定包码": {
+            "组合数": bao_combos["四定"],
+            "单份成本": round(bao_combos["四定"] * 0.1, 2),
+            "单注赔付": 0.1 * PAYOUT_RATIO["四定"],
+            "命中概率": bao_combos["四定"] / 10000.0,
+        },
+        "二现": {
+            "组合数": 1,
+            "单份成本": 1.0,
+            "单注赔付": float(PAYOUT_RATIO["二现"]),
+            "命中概率": PROB_XIAN[2],
+        },
+        "三现": {
+            "组合数": 1,
+            "单份成本": 1.0,
+            "单注赔付": float(PAYOUT_RATIO["三现"]),
+            "命中概率": PROB_XIAN[3],
+        },
+        "四现": {
+            "组合数": 1,
+            "单份成本": 1.0,
+            "单注赔付": float(PAYOUT_RATIO["四现"]),
+            "命中概率": PROB_XIAN[4],
+        },
+    }
+
+    plans = {}
+    total = 0.0
+    for play, weight in ALLOC_WEIGHTS.items():
+        s = schemes[play]
+        target = budget * weight
+        multiples = int(target / s["单份成本"])
+        if multiples < 1:
+            continue
+        cost = round(multiples * s["单份成本"], 2)
+        payout = round(multiples * s["单注赔付"], 2)
+        plans[play] = {
+            "倍数": multiples,
+            "组合数": s["组合数"],
+            "单份成本": s["单份成本"],
+            "实际投入": cost,
+            "命中概率": s["命中概率"],
+            "单注赔付": s["单注赔付"],
+            "中奖金额": payout,
+            "净收益": round(payout - cost, 2),
+        }
+        total += cost
+
+    # 预算太小时的兜底：保证至少有一份最便宜的玩法
+    if not plans:
+        candidates = sorted(schemes.items(), key=lambda x: x[1]["单份成本"])
+        for play, s in candidates:
+            multiples = int(budget / s["单份成本"])
+            if multiples >= 1:
+                cost = round(multiples * s["单份成本"], 2)
+                payout = round(multiples * s["单注赔付"], 2)
+                plans[play] = {
+                    "倍数": multiples,
+                    "组合数": s["组合数"],
+                    "单份成本": s["单份成本"],
+                    "实际投入": cost,
+                    "命中概率": s["命中概率"],
+                    "单注赔付": s["单注赔付"],
+                    "中奖金额": payout,
+                    "净收益": round(payout - cost, 2),
+                }
+                total += cost
+                break
+
+    plans["__total__"] = round(total, 2)
+    return plans
+
+
+# ============================================================
 # GUI
 # ============================================================
 class App(tk.Tk):
@@ -278,6 +413,17 @@ class App(tk.Tk):
             relief=tk.FLAT, cursor="hand2",
             command=self.on_predict)
         self.btn_predict.pack(side=tk.RIGHT)
+
+        tk.Label(top, text="元", font=("微软雅黑", 10),
+                 bg="#f5f5f5", fg="#555").pack(side=tk.RIGHT, padx=(2, 12))
+        self.budget_var = tk.StringVar(value="100")
+        self.entry_budget = tk.Entry(
+            top, textvariable=self.budget_var,
+            font=("Consolas", 11), width=8, justify="right",
+            relief=tk.SOLID, bd=1)
+        self.entry_budget.pack(side=tk.RIGHT, padx=(4, 2))
+        tk.Label(top, text="本期投入：", font=("微软雅黑", 10),
+                 bg="#f5f5f5", fg="#555").pack(side=tk.RIGHT)
 
         self.status = tk.Label(self, text="就绪 — 点击右上角 [预测] 开始",
                                anchor="w", bg="#ececec", fg="#555",
@@ -322,7 +468,24 @@ class App(tk.Tk):
         self.text.delete("1.0", tk.END)
         self.text.configure(state=tk.DISABLED)
 
+    def _read_budget(self):
+        raw = self.budget_var.get().strip()
+        if not raw:
+            return 0.0
+        try:
+            v = float(raw)
+            if v < 0:
+                raise ValueError
+            return v
+        except ValueError:
+            messagebox.showwarning("金额无效", "请输入大于等于 0 的数字作为本期投入金额。")
+            return None
+
     def on_predict(self):
+        budget = self._read_budget()
+        if budget is None:
+            return
+        self.budget = budget
         self.btn_predict.config(state=tk.DISABLED, text="爬取中...")
         self.set_status("正在从 zhcw.com 爬取最新50期开奖数据...", "#2980b9")
         self.clear()
@@ -336,8 +499,9 @@ class App(tk.Tk):
 
             predictor = Predictor(history)
             rec, pos_scores, digit_scores = make_recommendations(predictor)
+            budget_plans = calculate_budget_plans(self.budget, rec)
 
-            self.after(0, lambda: self._render(history, rec, pos_scores, digit_scores))
+            self.after(0, lambda: self._render(history, rec, pos_scores, digit_scores, budget_plans))
             self.after(0, lambda: self.set_status(f"完成 — 已分析 {len(history)} 期", "#27ae60"))
         except Exception as e:
             err = str(e)
@@ -346,13 +510,40 @@ class App(tk.Tk):
         finally:
             self.after(0, lambda: self.btn_predict.config(state=tk.NORMAL, text="预测"))
 
-    def _render(self, history, rec, pos_scores, digit_scores):
+    def _render(self, history, rec, pos_scores, digit_scores, budget_plans):
         self.clear()
         latest = history[0]
 
         self.append(f"最新一期 {latest['issue']} ({latest['date']})  开奖号码：", "h2")
         self.append("".join(str(x) for x in latest["nums"][:4]) + " ", "digit")
         self.append(f"(后位 {latest['nums'][4]})\n\n", "dim")
+
+        # ========== 预算分配方案 ==========
+        budget_total = budget_plans.get("__total__", 0.0)
+        if budget_total > 0:
+            self.append(f"【预算分配方案 — 本期投入 ¥{self.budget:.2f}】\n", "h1")
+            self.append(f"实际投注合计 ¥{budget_total:.2f}（剩余 ¥{self.budget - budget_total:.2f}，因最小注金限制无法整除）\n\n", "hint")
+            self.append(
+                "玩法        投注金额    倍数×组合数    命中概率      若中可得      净收益\n",
+                "hint")
+            order = ["二定包码", "三定包码", "四定包码", "二现", "三现", "四现"]
+            for play in order:
+                if play not in budget_plans:
+                    continue
+                p = budget_plans[play]
+                line = (f"{play:<8}  "
+                        f"¥{p['实际投入']:>7.2f}    "
+                        f"{p['倍数']:>3}×{p['组合数']:<3}      "
+                        f"{p['命中概率']*100:>6.3f}%    "
+                        f"¥{p['中奖金额']:>9.2f}    "
+                        f"¥{p['净收益']:>+9.2f}\n")
+                self.append(line)
+            self.append(
+                "\n说明：定位包码每注 0.1 元，赔率同比降10倍；现玩法每注 1 元。"
+                "命中概率指至少有一注命中的概率（基于推荐号选中真实号的假设上限）。\n\n",
+                "hint")
+        elif self.budget > 0:
+            self.append(f"【预算 ¥{self.budget:.2f} 过小，无法分配任何玩法】\n\n", "h1")
 
         # ========== 定位玩法 ==========
         self.append("【定位玩法 — 千百十个位置】\n", "h1")
