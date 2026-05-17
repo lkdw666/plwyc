@@ -5,9 +5,29 @@ import re
 import math
 import threading
 import tkinter as tk
+import unicodedata
 from tkinter import ttk, scrolledtext, messagebox
 from collections import Counter
 from itertools import combinations
+
+
+def _vwidth(s: str) -> int:
+    """字符串视觉宽度（CJK 字符算 2，ASCII 算 1）。"""
+    w = 0
+    for c in s:
+        if unicodedata.east_asian_width(c) in ("F", "W"):
+            w += 2
+        else:
+            w += 1
+    return w
+
+
+def _vpad(s: str, width: int, align: str = "left") -> str:
+    """按视觉宽度填充。"""
+    pad = max(0, width - _vwidth(s))
+    if align == "right":
+        return " " * pad + s
+    return s + " " * pad
 
 import requests
 
@@ -37,14 +57,41 @@ PROB_XIAN = {
     4: 0.0024,
 }
 
-# 预算分配权重 (按风险/期望值平衡)
-ALLOC_WEIGHTS = {
-    "二定包码": 0.15,
-    "三定包码": 0.25,
-    "四定包码": 0.15,
-    "二现":     0.10,
-    "三现":     0.25,
-    "四现":     0.10,
+# 风险偏好预设：三档不同的预算分配策略
+# 保守：偏向高命中率、低波动（二现/二定为主）
+# 平衡：六种玩法雨露均沾
+# 激进：偏向高赔付、低概率（四定/四现为主，搏大奖）
+RISK_PROFILES = {
+    "保守": {
+        "二定包码": 0.30,
+        "三定包码": 0.10,
+        "四定包码": 0.00,
+        "二现":     0.40,
+        "三现":     0.20,
+        "四现":     0.00,
+    },
+    "平衡": {
+        "二定包码": 0.15,
+        "三定包码": 0.25,
+        "四定包码": 0.15,
+        "二现":     0.10,
+        "三现":     0.25,
+        "四现":     0.10,
+    },
+    "激进": {
+        "二定包码": 0.05,
+        "三定包码": 0.20,
+        "四定包码": 0.40,
+        "二现":     0.00,
+        "三现":     0.10,
+        "四现":     0.25,
+    },
+}
+
+RISK_DESC = {
+    "保守": "高命中率优先 — 二现(9.74%)+二定包码(9%)为主，单注小额、回报稳定",
+    "平衡": "六种玩法均衡分配 — 兼顾命中率与赔付倍数",
+    "激进": "高赔付搏大奖 — 四定(9600倍)+四现(320倍)为主，命中率低但单中收益高",
 }
 
 
@@ -275,14 +322,16 @@ def make_recommendations(predictor: Predictor):
 # ============================================================
 # 预算分配
 # ============================================================
-def calculate_budget_plans(budget: float, rec: dict):
-    """根据预算和推荐方案，给每种玩法分配投注金额。
+def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
+    """根据预算、推荐方案和风险偏好，给每种玩法分配投注金额。
 
+    risk: "保守" / "平衡" / "激进"，对应不同的预算分配权重。
     返回 dict: 玩法名 -> {倍数, 组合数, 实际投入, 命中概率, 中奖金额, 单注赔付}
-    特殊键 __total__ 存放合计实际投入。
+    特殊键 __total__ 存放合计实际投入，__risk__ 存放使用的风险档位。
     """
     if budget <= 0:
-        return {"__total__": 0.0}
+        return {"__total__": 0.0, "__risk__": risk}
+    weights = RISK_PROFILES.get(risk, RISK_PROFILES["平衡"])
 
     # 各定位包码的组合数
     bao_combos = {}
@@ -334,7 +383,9 @@ def calculate_budget_plans(budget: float, rec: dict):
 
     plans = {}
     total = 0.0
-    for play, weight in ALLOC_WEIGHTS.items():
+    for play, weight in weights.items():
+        if weight <= 0:
+            continue
         s = schemes[play]
         target = budget * weight
         multiples = int(target / s["单份成本"])
@@ -376,6 +427,7 @@ def calculate_budget_plans(budget: float, rec: dict):
                 break
 
     plans["__total__"] = round(total, 2)
+    plans["__risk__"] = risk
     return plans
 
 
@@ -413,6 +465,16 @@ class App(tk.Tk):
             relief=tk.FLAT, cursor="hand2",
             command=self.on_predict)
         self.btn_predict.pack(side=tk.RIGHT)
+
+        self.risk_var = tk.StringVar(value="平衡")
+        self.combo_risk = ttk.Combobox(
+            top, textvariable=self.risk_var,
+            values=list(RISK_PROFILES.keys()),
+            state="readonly", width=6,
+            font=("微软雅黑", 10))
+        self.combo_risk.pack(side=tk.RIGHT, padx=(4, 12))
+        tk.Label(top, text="风险偏好：", font=("微软雅黑", 10),
+                 bg="#f5f5f5", fg="#555").pack(side=tk.RIGHT)
 
         tk.Label(top, text="元", font=("微软雅黑", 10),
                  bg="#f5f5f5", fg="#555").pack(side=tk.RIGHT, padx=(2, 12))
@@ -486,6 +548,7 @@ class App(tk.Tk):
         if budget is None:
             return
         self.budget = budget
+        self.risk = self.risk_var.get() or "平衡"
         self.btn_predict.config(state=tk.DISABLED, text="爬取中...")
         self.set_status("正在从 zhcw.com 爬取最新50期开奖数据...", "#2980b9")
         self.clear()
@@ -499,7 +562,7 @@ class App(tk.Tk):
 
             predictor = Predictor(history)
             rec, pos_scores, digit_scores = make_recommendations(predictor)
-            budget_plans = calculate_budget_plans(self.budget, rec)
+            budget_plans = calculate_budget_plans(self.budget, rec, self.risk)
 
             self.after(0, lambda: self._render(history, rec, pos_scores, digit_scores, budget_plans))
             self.after(0, lambda: self.set_status(f"完成 — 已分析 {len(history)} 期", "#27ae60"))
@@ -520,24 +583,40 @@ class App(tk.Tk):
 
         # ========== 预算分配方案 ==========
         budget_total = budget_plans.get("__total__", 0.0)
+        risk = budget_plans.get("__risk__", "平衡")
         if budget_total > 0:
-            self.append(f"【预算分配方案 — 本期投入 ¥{self.budget:.2f}】\n", "h1")
+            self.append(f"【预算分配方案 — 本期投入 ¥{self.budget:.2f}  风险偏好：{risk}】\n", "h1")
+            self.append(f"{RISK_DESC.get(risk, '')}\n", "hint")
             self.append(f"实际投注合计 ¥{budget_total:.2f}（剩余 ¥{self.budget - budget_total:.2f}，因最小注金限制无法整除）\n\n", "hint")
-            self.append(
-                "玩法        投注金额    倍数×组合数    命中概率      若中可得      净收益\n",
-                "hint")
+
+            cols = [
+                ("玩法",         8, "left"),
+                ("投注金额",     9, "right"),
+                ("倍数×组合数", 10, "left"),
+                ("命中概率",     8, "right"),
+                ("若中可得",    10, "right"),
+                ("净收益",      10, "right"),
+            ]
+            sep = "  "
+            header = sep.join(_vpad(name, w, a) for name, w, a in cols)
+            self.append(header + "\n", "hint")
+            self.append("─" * _vwidth(header) + "\n", "dim")
+
             order = ["二定包码", "三定包码", "四定包码", "二现", "三现", "四现"]
             for play in order:
                 if play not in budget_plans:
                     continue
                 p = budget_plans[play]
-                line = (f"{play:<8}  "
-                        f"¥{p['实际投入']:>7.2f}    "
-                        f"{p['倍数']:>3}×{p['组合数']:<3}      "
-                        f"{p['命中概率']*100:>6.3f}%    "
-                        f"¥{p['中奖金额']:>9.2f}    "
-                        f"¥{p['净收益']:>+9.2f}\n")
-                self.append(line)
+                cells = [
+                    play,
+                    f"¥{p['实际投入']:.2f}",
+                    f"{p['倍数']}×{p['组合数']}",
+                    f"{p['命中概率']*100:.3f}%",
+                    f"¥{p['中奖金额']:.2f}",
+                    f"¥{p['净收益']:+.2f}",
+                ]
+                line = sep.join(_vpad(v, cols[i][1], cols[i][2]) for i, v in enumerate(cells))
+                self.append(line + "\n")
             self.append(
                 "\n说明：定位包码每注 0.1 元，赔率同比降10倍；现玩法每注 1 元。"
                 "命中概率指至少有一注命中的概率（基于推荐号选中真实号的假设上限）。\n\n",

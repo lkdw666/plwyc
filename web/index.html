@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排列五预测器</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #e74c3c;
+            --primary-dark: #c0392b;
+            --secondary: #3498db;
+            --dark: #1a1a2e;
+            --dark-light: #16213e;
+            --accent: #f39c12;
+            --success: #27ae60;
+            --text: #ecf0f1;
+            --text-muted: #95a5a6;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: var(--text);
+            overflow-x: hidden;
+        }
+
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 30%, rgba(231, 76, 60, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 70%, rgba(52, 152, 219, 0.1) 0%, transparent 50%);
+            animation: rotate 30s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 3rem 0;
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 40px rgba(231, 76, 60, 0.3);
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        .control-panel {
+            background: rgba(26, 26, 46, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-group label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .input-field {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 0.875rem 1.25rem;
+            color: var(--text);
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            width: 180px;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.2);
+        }
+
+        select.input-field {
+            cursor: pointer;
+        }
+
+        .btn-predict {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border: none;
+            border-radius: 12px;
+            padding: 0.875rem 2.5rem;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(231, 76, 60, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-predict:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(231, 76, 60, 0.4);
+        }
+
+        .btn-predict:active {
+            transform: translateY(0);
+        }
+
+        .btn-predict:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-bar {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            margin-top: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.active {
+            background: var(--success);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .results.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .card {
+            background: rgba(26, 26, 46, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.6);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .card-title::before {
+            content: '';
+            width: 5px;
+            height: 24px;
+            background: linear-gradient(180deg, var(--primary), var(--accent));
+            border-radius: 3px;
+        }
+
+        .latest-draw {
+            grid-column: 1 / -1;
+        }
+
+        .draw-numbers {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .number-ball {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            box-shadow: 0 10px 30px rgba(231, 76, 60, 0.4), inset 0 -5px 15px rgba(0, 0, 0, 0.3);
+            animation: popIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) backwards;
+        }
+
+        .number-ball:nth-child(2) { animation-delay: 0.1s; }
+        .number-ball:nth-child(3) { animation-delay: 0.2s; }
+        .number-ball:nth-child(4) { animation-delay: 0.3s; }
+        .number-ball:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes popIn {
+            from {
+                transform: scale(0);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .number-ball.special {
+            background: linear-gradient(135deg, var(--accent), #d68910);
+            box-shadow: 0 10px 30px rgba(243, 156, 18, 0.4), inset 0 -5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .draw-info {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        .recommendation {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .rec-item {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border-left: 4px solid var(--primary);
+        }
+
+        .rec-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .rec-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'Orbitron', sans-serif;
+            color: var(--accent);
+        }
+
+        .rec-sub {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .budget-card {
+            grid-column: 1 / -1;
+        }
+
+        .budget-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .budget-table th,
+        .budget-table td {
+            padding: 1rem;
+            text-align: left;
+        }
+
+        .budget-table th {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .budget-table tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .budget-table td:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+
+        .budget-table td:last-child {
+            border-radius: 0 8px 8px 8px;
+        }
+
+        .highlight {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .success {
+            color: var(--success);
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .warning {
+            background: rgba(243, 156, 18, 0.1);
+            border: 1px solid rgba(243, 156, 18, 0.2);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            margin-top: 2rem;
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        .warning-icon {
+            font-size: 1.5rem;
+        }
+
+        .warning-text {
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .control-group,
+            .input-field,
+            .btn-predict {
+                width: 100%;
+            }
+
+            .results {
+                grid-template-columns: 1fr;
+            }
+
+            .number-ball {
+                width: 55px;
+                height: 55px;
+                font-size: 1.375rem;
+            }
+
+            .budget-table {
+                font-size: 0.8125rem;
+            }
+
+            .budget-table th,
+            .budget-table td {
+                padding: 0.75rem 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <div class="container">
+        <header>
+            <h1>排列五预测器</h1>
+            <p class="subtitle">基于历史数据的智能分析预测</p>
+        </header>
+
+        <div class="control-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="budget">本期投入（元）</label>
+                    <input type="number" id="budget" class="input-field" value="100" min="0">
+                </div>
+                <div class="control-group">
+                    <label for="risk">风险偏好</label>
+                    <select id="risk" class="input-field">
+                        <option value="保守">保守</option>
+                        <option value="平衡" selected>平衡</option>
+                        <option value="激进">激进</option>
+                    </select>
+                </div>
+                <button class="btn-predict" id="predictBtn">开始预测</button>
+            </div>
+            <div class="status-bar">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">就绪 — 点击"开始预测"进行分析</span>
+            </div>
+        </div>
+
+        <div class="results" id="results">
+            <div class="card latest-draw">
+                <h2 class="card-title">最新开奖</h2>
+                <div class="draw-info" id="drawInfo">
+                    第 -- 期 （----年--月--日）
+                </div>
+                <div class="draw-numbers" id="drawNumbers">
+                    <div class="number-ball">-</div>
+                    <div class="number-ball">-</div>
+                    <div class="number-ball">-</div>
+                    <div class="number-ball">-</div>
+                    <div class="number-ball special">-</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">二定推荐</h2>
+                <div class="recommendation">
+                    <div class="rec-item">
+                        <div class="rec-label">推荐单码</div>
+                        <div class="rec-value" id="twoDefSingle">-</div>
+                        <div class="rec-sub" id="twoDefSingleDesc">-</div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-label">推荐包码</div>
+                        <div class="rec-value" id="twoDefBao">-</div>
+                        <div class="rec-sub" id="twoDefBaoDesc">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">三定推荐</h2>
+                <div class="recommendation">
+                    <div class="rec-item">
+                        <div class="rec-label">推荐单码</div>
+                        <div class="rec-value" id="threeDefSingle">-</div>
+                        <div class="rec-sub" id="threeDefSingleDesc">-</div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-label">推荐包码</div>
+                        <div class="rec-value" id="threeDefBao">-</div>
+                        <div class="rec-sub" id="threeDefBaoDesc">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">四定推荐</h2>
+                <div class="recommendation">
+                    <div class="rec-item">
+                        <div class="rec-label">推荐单码</div>
+                        <div class="rec-value" id="fourDefSingle">-</div>
+                        <div class="rec-sub" id="fourDefSingleDesc">-</div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-label">推荐包码</div>
+                        <div class="rec-value" id="fourDefBao">-</div>
+                        <div class="rec-sub" id="fourDefBaoDesc">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">现玩法推荐</h2>
+                <div class="recommendation">
+                    <div class="rec-item">
+                        <div class="rec-label">二现</div>
+                        <div class="rec-value" id="twoXian">-</div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-label">三现</div>
+                        <div class="rec-value" id="threeXian">-</div>
+                    </div>
+                    <div class="rec-item">
+                        <div class="rec-label">四现</div>
+                        <div class="rec-value" id="fourXian">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card budget-card">
+                <h2 class="card-title">预算分配方案</h2>
+                <div id="budgetSummary" style="margin-bottom: 1rem; color: var(--text-muted);">
+                    实际投注合计：<span class="highlight">-</span>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="budget-table">
+                        <thead>
+                            <tr>
+                                <th>玩法</th>
+                                <th>投注金额</th>
+                                <th>倍数×组合数</th>
+                                <th>命中概率</th>
+                                <th>若中可得</th>
+                                <th>净收益</th>
+                            </tr>
+                        </thead>
+                        <tbody id="budgetTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="warning">
+                <span class="warning-icon">⚠️</span>
+                <div class="warning-text">
+                    <strong>温馨提示：</strong>本预测基于历史数据统计建模，仅供参考。彩票开奖本质随机，理性购彩，量力而行。
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>排列五预测器 · 仅供娱乐参考</p>
+        </footer>
+    </div>
+
+    <script>
+        // 模拟数据 - 实际使用时可替换为Python后端API
+        const mockData = {
+            latest: {
+                issue: '26127',
+                date: '2026-05-17',
+                nums: [9, 3, 6, 0, 3]
+            },
+            recommendations: {
+                "二定": {
+                    "单码": [["千位", 9], ["十位", 6]],
+                    "包码": [["千位", [9, 3, 0]], ["十位", [6, 0, 3]]]
+                },
+                "三定": {
+                    "单码": [["千位", 9], ["百位", 3], ["十位", 6]],
+                    "包码": [["千位", [9, 3, 0]], ["百位", [3, 6, 0]], ["十位", [6, 0, 3]]]
+                },
+                "四定": {
+                    "单码": [["千位", 9], ["百位", 3], ["十位", 6], ["个位", 0]],
+                    "包码": [["千位", [9, 3]], ["百位", [3, 6]], ["十位", [6, 0]], ["个位", [0, 3]]]
+                },
+                "二现": [9, 3],
+                "三现": [9, 3, 6],
+                "四现": [9, 3, 6, 0]
+            },
+            budgetPlans: {
+                "__total__": 99.8,
+                "__risk__": "平衡",
+                "二定包码": {
+                    "倍数": 5,
+                    "组合数": 9,
+                    "单份成本": 0.9,
+                    "实际投入": 4.5,
+                    "命中概率": 0.09,
+                    "单注赔付": 9.6,
+                    "中奖金额": 48.0,
+                    "净收益": 43.5
+                },
+                "三定包码": {
+                    "倍数": 3,
+                    "组合数": 27,
+                    "单份成本": 2.7,
+                    "实际投入": 8.1,
+                    "命中概率": 0.027,
+                    "单注赔付": 96.0,
+                    "中奖金额": 288.0,
+                    "净收益": 279.9
+                },
+                "四定包码": {
+                    "倍数": 2,
+                    "组合数": 16,
+                    "单份成本": 1.6,
+                    "实际投入": 3.2,
+                    "命中概率": 0.0016,
+                    "单注赔付": 960.0,
+                    "中奖金额": 1920.0,
+                    "净收益": 1916.8
+                },
+                "二现": {
+                    "倍数": 10,
+                    "组合数": 1,
+                    "单份成本": 1.0,
+                    "实际投入": 10.0,
+                    "命中概率": 0.0974,
+                    "单注赔付": 9.0,
+                    "中奖金额": 90.0,
+                    "净收益": 80.0
+                },
+                "三现": {
+                    "倍数": 25,
+                    "组合数": 1,
+                    "单份成本": 1.0,
+                    "实际投入": 25.0,
+                    "命中概率": 0.0204,
+                    "单注赔付": 45.0,
+                    "中奖金额": 1125.0,
+                    "净收益": 1100.0
+                },
+                "四现": {
+                    "倍数": 10,
+                    "组合数": 1,
+                    "单份成本": 1.0,
+                    "实际投入": 10.0,
+                    "命中概率": 0.0024,
+                    "单注赔付": 320.0,
+                    "中奖金额": 3200.0,
+                    "净收益": 3190.0
+                }
+            }
+        };
+
+        function updateStatus(text, isActive = false) {
+            document.getElementById('statusText').textContent = text;
+            const dot = document.getElementById('statusDot');
+            if (isActive) {
+                dot.classList.add('active');
+            } else {
+                dot.classList.remove('active');
+            }
+        }
+
+        function formatSingleBet(items) {
+            const order = ['千位', '百位', '十位', '个位'];
+            const m = {};
+            items.forEach(([pos, d]) => m[pos] = d);
+            return order.map(p => m[p] !== undefined ? m[p] : '*').join(' ');
+        }
+
+        function render(data) {
+            // 最新开奖
+            const latest = data.latest;
+            document.getElementById('drawInfo').textContent = 
+                `第 ${latest.issue} 期 （${latest.date}）`;
+            
+            const numsHtml = latest.nums.map((n, i) => 
+                `<div class="number-ball ${i === 4 ? 'special' : ''}">${n}</div>`
+            ).join('');
+            document.getElementById('drawNumbers').innerHTML = numsHtml;
+
+            // 推荐
+            const rec = data.recommendations;
+            
+            // 二定
+            const twoDefSingle = rec['二定']['单码'].map(([p, d]) => `${p}=${d}`).join(' | ');
+            document.getElementById('twoDefSingle').textContent = formatSingleBet(rec['二定']['单码']);
+            document.getElementById('twoDefSingleDesc').textContent = twoDefSingle;
+            
+            const twoDefBaoParts = rec['二定']['包码'].map(([p, ds]) => 
+                `${p}∈{${ds.join(',')}}`
+            ).join(' , ');
+            const twoDefCombos = rec['二定']['包码'].reduce((acc, [, ds]) => acc * ds.length, 1);
+            document.getElementById('twoDefBao').textContent = twoDefBaoParts;
+            document.getElementById('twoDefBaoDesc').textContent = `共 ${twoDefCombos} 注`;
+
+            // 三定
+            const threeDefSingle = rec['三定']['单码'].map(([p, d]) => `${p}=${d}`).join(' | ');
+            document.getElementById('threeDefSingle').textContent = formatSingleBet(rec['三定']['单码']);
+            document.getElementById('threeDefSingleDesc').textContent = threeDefSingle;
+            
+            const threeDefBaoParts = rec['三定']['包码'].map(([p, ds]) => 
+                `${p}∈{${ds.join(',')}}`
+            ).join(' , ');
+            const threeDefCombos = rec['三定']['包码'].reduce((acc, [, ds]) => acc * ds.length, 1);
+            document.getElementById('threeDefBao').textContent = threeDefBaoParts;
+            document.getElementById('threeDefBaoDesc').textContent = `共 ${threeDefCombos} 注`;
+
+            // 四定
+            const fourDefSingle = rec['四定']['单码'].map(([p, d]) => `${p}=${d}`).join(' | ');
+            document.getElementById('fourDefSingle').textContent = formatSingleBet(rec['四定']['单码']);
+            document.getElementById('fourDefSingleDesc').textContent = fourDefSingle;
+            
+            const fourDefBaoParts = rec['四定']['包码'].map(([p, ds]) => 
+                `${p}∈{${ds.join(',')}}`
+            ).join(' , ');
+            const fourDefCombos = rec['四定']['包码'].reduce((acc, [, ds]) => acc * ds.length, 1);
+            document.getElementById('fourDefBao').textContent = fourDefBaoParts;
+            document.getElementById('fourDefBaoDesc').textContent = `共 ${fourDefCombos} 注`;
+
+            // 现玩法
+            document.getElementById('twoXian').textContent = rec['二现'].join(' ');
+            document.getElementById('threeXian').textContent = rec['三现'].join(' ');
+            document.getElementById('fourXian').textContent = rec['四现'].join(' ');
+
+            // 预算
+            const budget = data.budgetPlans;
+            const inputBudget = parseFloat(document.getElementById('budget').value);
+            document.getElementById('budgetSummary').innerHTML = 
+                `实际投注合计：<span class="highlight">¥${budget['__total__'].toFixed(2)}</span>` +
+                (inputBudget > budget['__total__'] ? 
+                    `（剩余 ¥${(inputBudget - budget['__total__']).toFixed(2)}）` : '');
+
+            const order = ['二定包码', '三定包码', '四定包码', '二现', '三现', '四现'];
+            const tbody = document.getElementById('budgetTableBody');
+            tbody.innerHTML = '';
+            
+            order.forEach(play => {
+                if (!budget[play]) return;
+                const p = budget[play];
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${play}</td>
+                    <td class="highlight">¥${p['实际投入'].toFixed(2)}</td>
+                    <td>${p['倍数']}×${p['组合数']}</td>
+                    <td>${(p['命中概率'] * 100).toFixed(3)}%</td>
+                    <td class="highlight">¥${p['中奖金额'].toFixed(2)}</td>
+                    <td class="${p['净收益'] >= 0 ? 'success' : ''}">¥${p['净收益'] >= 0 ? '+' : ''}${p['净收益'].toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // 显示结果
+            document.getElementById('results').classList.add('visible');
+        }
+
+        document.getElementById('predictBtn').addEventListener('click', async function() {
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = '分析中...';
+            
+            updateStatus('正在获取最新开奖数据...', true);
+            
+            // 模拟加载
+            await new Promise(resolve => setTimeout(resolve, 500));
+            updateStatus('正在分析历史数据...', true);
+            
+            await new Promise(resolve => setTimeout(resolve, 800));
+            updateStatus('正在生成预测方案...', true);
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 使用模拟数据
+            render(mockData);
+            
+            updateStatus('完成 — 已完成分析预测', true);
+            btn.disabled = false;
+            btn.textContent = '重新预测';
+        });
+
+        // 初始渲染
+        render(mockData);
+    </script>
+</body>
+</html>
