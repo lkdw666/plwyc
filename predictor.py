@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """排列五预测器 - 爬取近50期数据并基于多特征加权评分给出预测"""
 import json
+import os
 import re
 import math
 import random
@@ -191,35 +192,25 @@ def db_save_backtest(result):
 # ============================================================
 # 数据爬取
 # ============================================================
-def fetch_history(count: int = 50):
-    """从中彩网爬取最近 count 期排列五开奖数据。
-
-    返回列表，按期号从新到旧排列：
-        [{"issue": "26127", "date": "2026-05-17", "nums": [9,3,6,0,3]}, ...]
-    """
+def _fetch_api(count: int = 50):
+    """API 爬取（fallback 用）。"""
     params = {
         "transactionType": "10001001",
-        "lotteryId": "284",  # 排列五
+        "lotteryId": "284",
         "issueCount": str(count),
-        "startIssue": "",
-        "endIssue": "",
-        "startDate": "",
-        "endDate": "",
+        "startIssue": "", "endIssue": "",
+        "startDate": "", "endDate": "",
         "type": "0",
-        "pageNum": "1",
-        "pageSize": str(count),
-        "tt": "0.123",
-        "callback": "cb",
+        "pageNum": "1", "pageSize": str(count),
+        "tt": "0.123", "callback": "cb",
     }
     resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=15)
     resp.raise_for_status()
-
     text = resp.text.strip()
     m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
     if not m:
         raise ValueError("接口响应不是预期的 JSONP 格式")
     payload = json.loads(m.group(1))
-
     rows = payload.get("data", []) or []
     history = []
     for row in rows:
@@ -235,6 +226,18 @@ def fetch_history(count: int = 50):
     if not history:
         raise ValueError("未取到任何开奖数据")
     return history
+
+
+def fetch_history(count: int = 50):
+    """读取历史数据。优先从 MySQL 数据库读，失败时 fallback 到 API 爬取。"""
+    try:
+        from db_utils import load_history
+        data = load_history(count)
+        if data and len(data) >= min(count, 10):
+            return data
+    except Exception:
+        pass
+    return _fetch_api(count)
 
 
 # ============================================================
@@ -731,11 +734,15 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("排列五预测器")
-        self.geometry("780x640")
+        self.geometry("840x660")
         self.configure(bg="#f5f5f5")
 
         try:
-            self.iconbitmap(default="")
+            # 尝试加载图标
+            import os
+            icon_path = os.path.join(os.path.dirname(__file__), "app.ico")
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
         except Exception:
             pass
 
@@ -751,13 +758,13 @@ class App(tk.Tk):
                          bg="#f5f5f5", fg="#222")
         title.pack(side=tk.LEFT)
 
-        self.btn_predict = tk.Button(
-            top, text="预测", font=("微软雅黑", 11, "bold"),
-            width=10, height=1, bg="#e74c3c", fg="white",
-            activebackground="#c0392b", activeforeground="white",
+        self.btn_quant = tk.Button(
+            top, text="量化", font=("微软雅黑", 11, "bold"),
+            width=10, height=1, bg="#27ae60", fg="white",
+            activebackground="#1e8449", activeforeground="white",
             relief=tk.FLAT, cursor="hand2",
-            command=self.on_predict)
-        self.btn_predict.pack(side=tk.RIGHT)
+            command=self.on_load_quant)
+        self.btn_quant.pack(side=tk.RIGHT)
 
         self.btn_backtest = tk.Button(
             top, text="回测", font=("微软雅黑", 11, "bold"),
@@ -767,15 +774,45 @@ class App(tk.Tk):
             command=self.on_backtest)
         self.btn_backtest.pack(side=tk.RIGHT, padx=(0, 6))
 
+        self.btn_predict = tk.Button(
+            top, text="预测", font=("微软雅黑", 11, "bold"),
+            width=10, height=1, bg="#e74c3c", fg="white",
+            activebackground="#c0392b", activeforeground="white",
+            relief=tk.FLAT, cursor="hand2",
+            command=self.on_predict)
+        self.btn_predict.pack(side=tk.RIGHT, padx=(0, 6))
+
+        self.dropdown_slot = tk.Frame(top, bg="#f5f5f5", width=130, height=28)
+        self.dropdown_slot.pack(side=tk.RIGHT, padx=(12, 6))
+        self.dropdown_slot.pack_propagate(False)
+
+        self.risk_frame = tk.Frame(self.dropdown_slot, bg="#f5f5f5")
+        tk.Label(self.risk_frame, text="风险偏好：", font=("微软雅黑", 10),
+                 bg="#f5f5f5", fg="#555").pack(side=tk.LEFT)
         self.risk_var = tk.StringVar(value="平衡")
         self.combo_risk = ttk.Combobox(
-            top, textvariable=self.risk_var,
+            self.risk_frame, textvariable=self.risk_var,
             values=list(RISK_PROFILES.keys()),
             state="readonly", width=6,
             font=("微软雅黑", 10))
-        self.combo_risk.pack(side=tk.RIGHT, padx=(4, 12))
-        tk.Label(top, text="风险偏好：", font=("微软雅黑", 10),
-                 bg="#f5f5f5", fg="#555").pack(side=tk.RIGHT)
+        self.combo_risk.pack(side=tk.LEFT, padx=(4, 0))
+
+        self.quant_frame = tk.Frame(self.dropdown_slot, bg="#f5f5f5")
+        tk.Label(self.quant_frame, text="量化数据：", font=("微软雅黑", 10),
+                 bg="#f5f5f5", fg="#555").pack(side=tk.LEFT)
+        self.quant_periods_var = tk.StringVar(value="2000")
+        self.combo_quant_periods = ttk.Combobox(
+            self.quant_frame, textvariable=self.quant_periods_var,
+            values=["500", "1000", "2000", "5000", "全部"],
+            state="readonly", width=6,
+            font=("微软雅黑", 10))
+        self.combo_quant_periods.pack(side=tk.LEFT, padx=(4, 0))
+
+        self._show_risk_dropdown()
+
+        for w in (self.btn_predict, self.btn_backtest):
+            w.bind("<Enter>", lambda e: self._show_risk_dropdown())
+        self.btn_quant.bind("<Enter>", lambda e: self._show_quant_dropdown())
 
         tk.Label(top, text="元", font=("微软雅黑", 10),
                  bg="#f5f5f5", fg="#555").pack(side=tk.RIGHT, padx=(2, 12))
@@ -803,6 +840,14 @@ class App(tk.Tk):
         self.text.pack(fill=tk.BOTH, expand=True)
         self.text.configure(state=tk.DISABLED)
 
+        # 底部"凌枯网络制作"文字
+        bottom_frame = tk.Frame(self, bg="#f5f5f5")
+        bottom_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        tk.Label(bottom_frame, text="凌枯网络制作", 
+                 font=("微软雅黑", 9), 
+                 bg="#f5f5f5", 
+                 fg="#999").pack(side=tk.RIGHT)
+
         self._tag_setup()
 
     def _tag_setup(self):
@@ -813,6 +858,14 @@ class App(tk.Tk):
         self.text.tag_configure("digit", font=("Consolas", 14, "bold"), foreground="#e74c3c")
         self.text.tag_configure("ok", foreground="#27ae60")
         self.text.tag_configure("dim", foreground="#999")
+
+    def _show_risk_dropdown(self):
+        self.quant_frame.pack_forget()
+        self.risk_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_quant_dropdown(self):
+        self.risk_frame.pack_forget()
+        self.quant_frame.pack(fill=tk.BOTH, expand=True)
 
     def set_status(self, msg, color="#555"):
         self.status.config(text=msg, fg=color)
@@ -1138,6 +1191,139 @@ class App(tk.Tk):
         order = ["千位", "百位", "十位", "个位"]
         m = {pos: d for pos, d in items}
         return " ".join(str(m[p]) if p in m else "*" for p in order)
+
+    def on_load_quant(self):
+        """根据下拉框选择的数据量重跑量化模型并展示报告。"""
+        sel = self.quant_periods_var.get().strip()
+        if sel in ("全部", "all", "0"):
+            periods = 0
+            label = "全部"
+        else:
+            try:
+                periods = int(sel)
+                label = f"{periods}期"
+            except ValueError:
+                messagebox.showwarning("参数错误", f"无法识别数据量：{sel}")
+                return
+
+        self.btn_quant.config(state=tk.DISABLED, text="计算中...")
+        self.set_status(f"量化计算中（使用 {label} 数据，可能需要 1-3 分钟）...", "#2980b9")
+        self.clear()
+        self.append(f"【量化计算进行中】使用 {label} 数据\n", "h1")
+        self.append("正在加载历史数据 → 学习因子权重 → 滚动回测...\n请稍候\n", "hint")
+        threading.Thread(target=self._do_quant, args=(periods,), daemon=True).start()
+
+    def _do_quant(self, periods):
+        json_path = os.path.join(os.path.dirname(__file__), "quant_output.json")
+        try:
+            import quant
+            quant.run_quant(periods=periods, budget=100.0,
+                            output_file=json_path, verbose=False)
+            with open(json_path, "r", encoding="utf-8") as f:
+                self.quant_data = json.load(f)
+            self.after(0, self._render_quant)
+            n = self.quant_data["meta"].get("periods_used", "?")
+            self.after(0, lambda: self.set_status(
+                f"量化完成 — 使用 {n} 期数据", "#27ae60"))
+        except Exception as e:
+            err = str(e)
+            self.after(0, lambda: self.set_status(f"量化失败：{err}", "#c0392b"))
+            self.after(0, lambda: messagebox.showerror("量化失败", err))
+        finally:
+            self.after(0, lambda: self.btn_quant.config(state=tk.NORMAL, text="量化"))
+
+    def _render_quant(self):
+        self.clear()
+        d = self.quant_data
+        meta = d.get("meta", {})
+        bt = d.get("回测报告", {})
+        fw = d.get("因子权重", {})
+        rec = d.get("预测推荐", {})
+
+        sep = "  "
+
+        # ── 头部 ──
+        self.append("【量化分析报告 — 多因子选号模型】\n", "h1")
+        self.append(
+            f"训练窗口：{meta.get('train_window', '?')} 期    "
+            f"测试期数：{meta.get('test_periods', '?')} 期    "
+            f"每期预算：¥{meta.get('budget', '?')}    "
+            f"生成日期：{meta.get('generated_at', '?')}\n\n",
+            "hint")
+
+        # ── 回测概览 ──
+        self.append("──────  回测表现  ──────\n", "h2")
+        metrics = [
+            ("测试期数",  bt.get("n_test", 0), ""),
+            ("总投入",    f"¥{bt.get('total_cost', 0):.2f}", ""),
+            ("总回报",    f"¥{bt.get('total_payout', 0):.2f}", ""),
+            ("净收益",    f"¥{bt.get('net', 0):+.2f}", "ok" if bt.get("net", 0) > 0 else "dim"),
+            ("ROI",      f"{bt.get('roi', 0)*100:+.2f}%", ""),
+            ("Sharpe",   f"{bt.get('sharpe', 0):.4f}", ""),
+            ("Calmar",   f"{bt.get('calmar', 0):.4f}", ""),
+            ("最大回撤",  f"¥{bt.get('max_drawdown', 0):.2f}", ""),
+            ("盈亏比",    f"{bt.get('profit_factor', 0):.4f}", ""),
+            ("胜率",     f"{bt.get('win_rate', 0)*100:.2f}%", ""),
+        ]
+        cols3 = [("指标", 8, "left"), ("数值", 16, "right")]
+        self.append(sep.join(_vpad(n, w, a) for n, w, a in cols3) + "\n", "hint")
+        self.append("─" * _vwidth(sep.join(_vpad(n, w, a) for n, w, a in cols3)) + "\n", "dim")
+        for name, val, tag in metrics:
+            line = sep.join([_vpad(name, 8, "left"), _vpad(str(val), 16, "right")])
+            self.append(line + "\n", tag if tag else None)
+        diff = bt.get("algo_vs_random_net_diff", 0)
+        self.append(
+            f"\n算法相对随机基准净收益差：¥{diff:+.2f}\n",
+            "ok" if diff > 0 else "dim")
+
+        # ── 因子权重 ──
+        self.append("\n──────  因子权重（IC学习）  ──────\n", "h2")
+        cols4 = [("因子名", 16, "left"), ("IC", 8, "right"), ("权重", 8, "right"), ("强度", 15, "left")]
+        self.append(sep.join(_vpad(n, w, a) for n, w, a in cols4) + "\n", "hint")
+        self.append("─" * _vwidth(sep.join(_vpad(n, w, a) for n, w, a in cols4)) + "\n", "dim")
+        for name in sorted(fw, key=lambda n: fw[n]["weight"], reverse=True):
+            info = fw[name]
+            bar = "█" * int(info["weight"] * 50)
+            cells = [name, f"{info['ic']:.4f}", f"{info['weight']:.4f}", bar]
+            line = sep.join(_vpad(v, cols4[i][1], cols4[i][2]) for i, v in enumerate(cells))
+            self.append(line + "\n")
+
+        # ── 量化推荐 ──
+        self.append("\n──────  最新推荐组合  ──────\n", "h2")
+        pos_names = Predictor.POS_NAMES
+        for play_name in ["二定", "三定", "四定"]:
+            data = rec.get(play_name, {})
+            if not data:
+                continue
+            single = [(p, d) for p, d in data.get("单码", [])]
+            bao = [(p, ds) for p, ds in data.get("包码", [])]
+            self.append(f"▶ {play_name}\n", "num")
+            self.append(f"  单码：{self._format_single_bet(single)}\n")
+            bao_str = " , ".join(f"{p}∈{{{','.join(str(x) for x in ds)}}}" for p, ds in bao)
+            n_combo = 1
+            for _, ds in bao:
+                n_combo *= len(ds)
+            self.append(f"  包码：{bao_str}  共 {n_combo} 注 = ¥{n_combo*0.1:.2f}\n\n")
+
+        for play_name in ["二现", "三现", "四现"]:
+            digits = rec.get(play_name, [])
+            if digits:
+                self.append(f"▶ {play_name}：{' '.join(str(d) for d in digits)}\n", "digit")
+                self.append(f"  即买入数字 {{{','.join(str(d) for d in digits)}}}\n\n", "hint")
+
+        # ── 位置评分 ──
+        self.append("──────  各位置数字评分  ──────\n", "dim")
+        pos_scores = d.get("位置评分", [])
+        if pos_scores:
+            self.append("位置  " + "   ".join(f" {d} " for d in range(10)) + "\n", "hint")
+            for pos in range(4):
+                row = pos_scores[pos]
+                line = f"{pos_names[pos]}  "
+                for d_idx in range(10):
+                    line += f"{row[d_idx]:.2f} "
+                self.append(line + "\n")
+
+        self._scroll_top()
 
 
 def main():
