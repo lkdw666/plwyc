@@ -3,12 +3,16 @@
 import json
 import re
 import math
+import random
 import threading
 import tkinter as tk
 import unicodedata
 from tkinter import ttk, scrolledtext, messagebox
 from collections import Counter
 from itertools import combinations
+
+import pymysql
+import requests
 
 
 def _vwidth(s: str) -> int:
@@ -28,8 +32,6 @@ def _vpad(s: str, width: int, align: str = "left") -> str:
     if align == "right":
         return " " * pad + s
     return s + " " * pad
-
-import requests
 
 
 API_URL = "https://jc.zhcw.com/port/client_json.php"
@@ -63,6 +65,9 @@ PROB_XIAN = {
 # 激进：偏向高赔付、低概率（四定/四现为主，搏大奖）
 RISK_PROFILES = {
     "保守": {
+        "二定单码": 0.00,
+        "三定单码": 0.00,
+        "四定单码": 0.00,
         "二定包码": 0.30,
         "三定包码": 0.10,
         "四定包码": 0.00,
@@ -71,20 +76,26 @@ RISK_PROFILES = {
         "四现":     0.00,
     },
     "平衡": {
-        "二定包码": 0.15,
-        "三定包码": 0.25,
-        "四定包码": 0.15,
+        "二定单码": 0.05,
+        "三定单码": 0.05,
+        "四定单码": 0.05,
+        "二定包码": 0.10,
+        "三定包码": 0.20,
+        "四定包码": 0.10,
         "二现":     0.10,
         "三现":     0.25,
         "四现":     0.10,
     },
     "激进": {
+        "二定单码": 0.00,
+        "三定单码": 0.10,
+        "四定单码": 0.25,
         "二定包码": 0.05,
-        "三定包码": 0.20,
-        "四定包码": 0.40,
+        "三定包码": 0.10,
+        "四定包码": 0.20,
         "二现":     0.00,
         "三现":     0.10,
-        "四现":     0.25,
+        "四现":     0.20,
     },
 }
 
@@ -93,6 +104,88 @@ RISK_DESC = {
     "平衡": "六种玩法均衡分配 — 兼顾命中率与赔付倍数",
     "激进": "高赔付搏大奖 — 四定(9600倍)+四现(320倍)为主，命中率低但单中收益高",
 }
+
+DB_CONFIG = dict(host="localhost", user="root", password="root",
+                 database="pl5_predictor", charset="utf8mb4")
+
+
+# ============================================================
+# 数据库
+# ============================================================
+def db_connect():
+    return pymysql.connect(**DB_CONFIG)
+
+
+def db_save_draws(history):
+    """缓存开奖数据（newest-first list），重复期号忽略。"""
+    if not history:
+        return
+    conn = db_connect()
+    try:
+        with conn.cursor() as cur:
+            for h in history:
+                nums = h["nums"]
+                cur.execute(
+                    "INSERT IGNORE INTO draws (issue, open_date, d1, d2, d3, d4, d5) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (h["issue"], h["date"], nums[0], nums[1], nums[2], nums[3], nums[4])
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def db_save_prediction(target_issue, budget, risk, rec, plans, pos_scores, digit_scores):
+    conn = db_connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO predictions (target_issue, budget, risk, recommendations, "
+                "budget_plans, pos_scores, digit_scores) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (target_issue, budget, risk,
+                 json.dumps(rec, ensure_ascii=False),
+                 json.dumps(plans, ensure_ascii=False),
+                 json.dumps(pos_scores), json.dumps(digit_scores))
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def db_save_backtest(result):
+    conn = db_connect()
+    try:
+        with conn.cursor() as cur:
+            t = result["totals"]
+            algo_hits = {p: result["play_stats"][p]["algo_hits"] for p in result["play_stats"]}
+            random_hits = {p: result["play_stats"][p]["random_hits"] for p in result["play_stats"]}
+            cur.execute(
+                "INSERT INTO backtests (train_window, test_periods, budget, risk, "
+                "total_cost, total_payout, net_return, roi, algo_hit_rate, random_hit_rate, summary) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (result["train_window"], result["n_test"], result["budget"], result["risk"],
+                 t["algo_cost"], t["algo_payout"], t["algo_net"], t["algo_roi"],
+                 json.dumps(algo_hits, ensure_ascii=False),
+                 json.dumps(random_hits, ensure_ascii=False),
+                 json.dumps(result["play_stats"], ensure_ascii=False))
+            )
+            backtest_id = cur.lastrowid
+            for d in result["details"]:
+                cur.execute(
+                    "INSERT INTO backtest_details (backtest_id, test_issue, actual_nums, "
+                    "algo_recommendations, random_recommendations, algo_hits, random_hits, "
+                    "cost, payout) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (backtest_id, d["issue"], d["actual"],
+                     json.dumps(d["algo_rec"], ensure_ascii=False),
+                     json.dumps(d["random_rec"], ensure_ascii=False),
+                     json.dumps({k: v["hit"] for k, v in d["algo_eval"]["results"].items()}, ensure_ascii=False),
+                     json.dumps({k: v["hit"] for k, v in d["random_eval"]["results"].items()}, ensure_ascii=False),
+                     d["algo_eval"]["total_cost"], d["algo_eval"]["total_payout"])
+                )
+        conn.commit()
+        return backtest_id
+    finally:
+        conn.close()
 
 
 # ============================================================
@@ -269,6 +362,18 @@ class Predictor:
 # ============================================================
 # 推荐生成
 # ============================================================
+def _select_dynamic(scores, min_n, max_n, threshold):
+    """按评分动态选择数字：分数 >= threshold 的全选，限制在 [min_n, max_n] 区间。
+    评分平 → 多选（信号弱，分散风险）；评分尖锐 → 少选（信号强，集中）。"""
+    ranked = sorted(range(10), key=lambda d: scores[d], reverse=True)
+    selected = [d for d in ranked if scores[d] >= threshold]
+    if len(selected) < min_n:
+        selected = ranked[:min_n]
+    elif len(selected) > max_n:
+        selected = selected[:max_n]
+    return selected
+
+
 def make_recommendations(predictor: Predictor):
     """基于评分生成 6 种玩法的推荐方案。"""
     pos_scores = predictor.position_scores()
@@ -295,20 +400,23 @@ def make_recommendations(predictor: Predictor):
     two_def_positions = sorted([pos_strength[0][0], pos_strength[1][0]])
     rec["二定"] = {
         "单码": [(pos_names[p], best_digit_each_pos[p]) for p in two_def_positions],
-        "包码": [(pos_names[p], top_per_pos[p][:3]) for p in two_def_positions],
+        "包码": [(pos_names[p], _select_dynamic(pos_scores[p], 3, 6, 0.55))
+                 for p in two_def_positions],
     }
 
     # —— 三定：选评分最高的 3 个位置
     three_def_positions = sorted([pos_strength[i][0] for i in range(3)])
     rec["三定"] = {
         "单码": [(pos_names[p], best_digit_each_pos[p]) for p in three_def_positions],
-        "包码": [(pos_names[p], top_per_pos[p][:3]) for p in three_def_positions],
+        "包码": [(pos_names[p], _select_dynamic(pos_scores[p], 3, 6, 0.55))
+                 for p in three_def_positions],
     }
 
-    # —— 四定：4 个位置全占
+    # —— 四定：4 个位置全占（成本对位置数敏感，阈值更严、上限更低）
     rec["四定"] = {
         "单码": [(pos_names[p], best_digit_each_pos[p]) for p in range(4)],
-        "包码": [(pos_names[p], top_per_pos[p][:2]) for p in range(4)],
+        "包码": [(pos_names[p], _select_dynamic(pos_scores[p], 2, 4, 0.6))
+                 for p in range(4)],
     }
 
     # —— 现玩法：取全局 top N 个不同数字
@@ -343,6 +451,24 @@ def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
 
     # 每种"投注单元"的元数据：单份成本 / 单注赔付 / 命中概率（命中即至少一注中）
     schemes = {
+        "二定单码": {
+            "组合数": 1,
+            "单份成本": 1.0,
+            "单注赔付": float(PAYOUT_RATIO["二定"]),
+            "命中概率": 1 / 100.0,
+        },
+        "三定单码": {
+            "组合数": 1,
+            "单份成本": 1.0,
+            "单注赔付": float(PAYOUT_RATIO["三定"]),
+            "命中概率": 1 / 1000.0,
+        },
+        "四定单码": {
+            "组合数": 1,
+            "单份成本": 1.0,
+            "单注赔付": float(PAYOUT_RATIO["四定"]),
+            "命中概率": 1 / 10000.0,
+        },
         "二定包码": {
             "组合数": bao_combos["二定"],
             "单份成本": round(bao_combos["二定"] * 0.1, 2),
@@ -432,6 +558,173 @@ def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
 
 
 # ============================================================
+# 回测引擎
+# ============================================================
+PLAY_TO_DEF_NAME = {
+    "二定单码": ("二定", "单码"),
+    "三定单码": ("三定", "单码"),
+    "四定单码": ("四定", "单码"),
+    "二定包码": ("二定", "包码"),
+    "三定包码": ("三定", "包码"),
+    "四定包码": ("四定", "包码"),
+}
+POS_NAME_TO_IDX = {"千位": 0, "百位": 1, "十位": 2, "个位": 3}
+
+
+def make_random_recommendations():
+    """生成随机基准的推荐方案，结构与 make_recommendations 输出一致。"""
+    pos_names = Predictor.POS_NAMES
+    rec = {}
+    pos_strength = list(range(4))
+    random.shuffle(pos_strength)
+
+    def rand_digits(k):
+        return random.sample(range(10), k)
+
+    two_pos = sorted(pos_strength[:2])
+    rec["二定"] = {
+        "单码": [(pos_names[p], random.randint(0, 9)) for p in two_pos],
+        "包码": [(pos_names[p], rand_digits(3)) for p in two_pos],
+    }
+    three_pos = sorted(pos_strength[:3])
+    rec["三定"] = {
+        "单码": [(pos_names[p], random.randint(0, 9)) for p in three_pos],
+        "包码": [(pos_names[p], rand_digits(3)) for p in three_pos],
+    }
+    rec["四定"] = {
+        "单码": [(pos_names[p], random.randint(0, 9)) for p in range(4)],
+        "包码": [(pos_names[p], rand_digits(2)) for p in range(4)],
+    }
+    rec["二现"] = rand_digits(2)
+    rec["三现"] = rand_digits(3)
+    rec["四现"] = rand_digits(4)
+    return rec
+
+
+def evaluate_bet(play, rec, plan, actual):
+    """判断一注是否命中，返回 (hit, cost, payout)。
+    actual: 4位开奖号 list[int]"""
+    cost = plan["实际投入"]
+    multiples = plan["倍数"]
+
+    if play in PLAY_TO_DEF_NAME:
+        def_name, kind = PLAY_TO_DEF_NAME[play]
+        if kind == "单码":
+            single = rec[def_name]["单码"]
+            hit = all(actual[POS_NAME_TO_IDX[pos]] == d for pos, d in single)
+            payout = round(multiples * PAYOUT_RATIO[def_name], 2) if hit else 0.0
+        else:
+            bao = rec[def_name]["包码"]
+            hit = all(actual[POS_NAME_TO_IDX[pos]] in digits for pos, digits in bao)
+            payout = round(0.1 * PAYOUT_RATIO[def_name] * multiples, 2) if hit else 0.0
+    else:
+        digits = rec[play]
+        hit = all(d in actual for d in digits)
+        payout = round(multiples * PAYOUT_RATIO[play], 2) if hit else 0.0
+
+    return hit, cost, payout
+
+
+def run_backtest(history, train_window=50, budget=100.0, risk="平衡"):
+    """滚动回测：history 为 newest-first，对每一期 t (从最旧的可测期到最新)
+    用其前 train_window 期作训练数据预测，对比算法 vs 随机基准。
+
+    返回包含 totals, play_stats, details 的 dict。"""
+    chrono = list(reversed(history))  # 从旧到新
+    n = len(chrono)
+    if n < train_window + 1:
+        raise ValueError(f"数据不足，需要至少 {train_window + 1} 期，当前 {n} 期")
+
+    play_stats = {}
+    play_names = ["二定单码", "二定包码", "三定单码", "三定包码",
+                  "四定单码", "四定包码", "二现", "三现", "四现"]
+    for p in play_names:
+        play_stats[p] = {
+            "algo_bets": 0, "algo_hits": 0, "algo_cost": 0.0, "algo_payout": 0.0,
+            "random_bets": 0, "random_hits": 0, "random_cost": 0.0, "random_payout": 0.0,
+        }
+
+    details = []
+    algo_total_cost = algo_total_payout = 0.0
+    rand_total_cost = rand_total_payout = 0.0
+
+    for t in range(train_window, n):
+        train_newest_first = list(reversed(chrono[:t]))
+        target = chrono[t]
+        actual = target["nums"][:4]
+
+        predictor = Predictor(train_newest_first)
+        algo_rec, _, _ = make_recommendations(predictor)
+        algo_plans = calculate_budget_plans(budget, algo_rec, risk)
+
+        random_rec = make_random_recommendations()
+        random_plans = calculate_budget_plans(budget, random_rec, risk)
+
+        algo_eval = {"results": {}, "total_cost": 0.0, "total_payout": 0.0}
+        random_eval = {"results": {}, "total_cost": 0.0, "total_payout": 0.0}
+
+        for play in play_names:
+            if play in algo_plans and not play.startswith("__"):
+                hit, cost, payout = evaluate_bet(play, algo_rec, algo_plans[play], actual)
+                algo_eval["results"][play] = {"hit": hit, "cost": cost, "payout": payout}
+                algo_eval["total_cost"] += cost
+                algo_eval["total_payout"] += payout
+                play_stats[play]["algo_bets"] += 1
+                play_stats[play]["algo_hits"] += int(hit)
+                play_stats[play]["algo_cost"] += cost
+                play_stats[play]["algo_payout"] += payout
+
+            if play in random_plans and not play.startswith("__"):
+                hit, cost, payout = evaluate_bet(play, random_rec, random_plans[play], actual)
+                random_eval["results"][play] = {"hit": hit, "cost": cost, "payout": payout}
+                random_eval["total_cost"] += cost
+                random_eval["total_payout"] += payout
+                play_stats[play]["random_bets"] += 1
+                play_stats[play]["random_hits"] += int(hit)
+                play_stats[play]["random_cost"] += cost
+                play_stats[play]["random_payout"] += payout
+
+        algo_total_cost += algo_eval["total_cost"]
+        algo_total_payout += algo_eval["total_payout"]
+        rand_total_cost += random_eval["total_cost"]
+        rand_total_payout += random_eval["total_payout"]
+
+        details.append({
+            "issue": target["issue"], "date": target["date"],
+            "actual": "".join(str(x) for x in actual),
+            "algo_rec": algo_rec, "random_rec": random_rec,
+            "algo_eval": algo_eval, "random_eval": random_eval,
+        })
+
+    totals = {
+        "algo_cost": round(algo_total_cost, 2),
+        "algo_payout": round(algo_total_payout, 2),
+        "algo_net": round(algo_total_payout - algo_total_cost, 2),
+        "algo_roi": round((algo_total_payout - algo_total_cost) / algo_total_cost, 4) if algo_total_cost > 0 else 0.0,
+        "random_cost": round(rand_total_cost, 2),
+        "random_payout": round(rand_total_payout, 2),
+        "random_net": round(rand_total_payout - rand_total_cost, 2),
+        "random_roi": round((rand_total_payout - rand_total_cost) / rand_total_cost, 4) if rand_total_cost > 0 else 0.0,
+    }
+
+    for p, s in play_stats.items():
+        s["algo_hit_rate"] = round(s["algo_hits"] / s["algo_bets"], 4) if s["algo_bets"] > 0 else 0.0
+        s["random_hit_rate"] = round(s["random_hits"] / s["random_bets"], 4) if s["random_bets"] > 0 else 0.0
+        s["algo_roi"] = round((s["algo_payout"] - s["algo_cost"]) / s["algo_cost"], 4) if s["algo_cost"] > 0 else 0.0
+        s["random_roi"] = round((s["random_payout"] - s["random_cost"]) / s["random_cost"], 4) if s["random_cost"] > 0 else 0.0
+
+    return {
+        "train_window": train_window,
+        "n_test": len(details),
+        "budget": budget,
+        "risk": risk,
+        "totals": totals,
+        "play_stats": play_stats,
+        "details": details,
+    }
+
+
+# ============================================================
 # GUI
 # ============================================================
 class App(tk.Tk):
@@ -465,6 +758,14 @@ class App(tk.Tk):
             relief=tk.FLAT, cursor="hand2",
             command=self.on_predict)
         self.btn_predict.pack(side=tk.RIGHT)
+
+        self.btn_backtest = tk.Button(
+            top, text="回测", font=("微软雅黑", 11, "bold"),
+            width=10, height=1, bg="#2980b9", fg="white",
+            activebackground="#1f618d", activeforeground="white",
+            relief=tk.FLAT, cursor="hand2",
+            command=self.on_backtest)
+        self.btn_backtest.pack(side=tk.RIGHT, padx=(0, 6))
 
         self.risk_var = tk.StringVar(value="平衡")
         self.combo_risk = ttk.Combobox(
@@ -523,7 +824,9 @@ class App(tk.Tk):
         else:
             self.text.insert(tk.END, text)
         self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
+
+    def _scroll_top(self):
+        self.text.yview_moveto(0)
 
     def clear(self):
         self.text.configure(state=tk.NORMAL)
@@ -558,11 +861,22 @@ class App(tk.Tk):
         try:
             history = fetch_history(50)
             self.history = history
+            try:
+                db_save_draws(history)
+            except Exception as db_err:
+                print(f"[DB warn] save draws failed: {db_err}")
             self.after(0, lambda: self.set_status(f"已获取 {len(history)} 期数据，正在分析...", "#2980b9"))
 
             predictor = Predictor(history)
             rec, pos_scores, digit_scores = make_recommendations(predictor)
             budget_plans = calculate_budget_plans(self.budget, rec, self.risk)
+
+            try:
+                next_issue = self._next_issue(history[0]["issue"])
+                db_save_prediction(next_issue, self.budget, self.risk, rec,
+                                   budget_plans, pos_scores, digit_scores)
+            except Exception as db_err:
+                print(f"[DB warn] save prediction failed: {db_err}")
 
             self.after(0, lambda: self._render(history, rec, pos_scores, digit_scores, budget_plans))
             self.after(0, lambda: self.set_status(f"完成 — 已分析 {len(history)} 期", "#27ae60"))
@@ -572,6 +886,141 @@ class App(tk.Tk):
             self.after(0, lambda: messagebox.showerror("出错了", f"爬取或分析失败：\n{err}"))
         finally:
             self.after(0, lambda: self.btn_predict.config(state=tk.NORMAL, text="预测"))
+
+    @staticmethod
+    def _next_issue(issue):
+        try:
+            return str(int(issue) + 1)
+        except (ValueError, TypeError):
+            return f"after_{issue}"
+
+    def on_backtest(self):
+        budget = self._read_budget()
+        if budget is None:
+            return
+        self.budget = budget
+        self.risk = self.risk_var.get() or "平衡"
+        self.btn_backtest.config(state=tk.DISABLED, text="回测中...")
+        self.btn_predict.config(state=tk.DISABLED)
+        self.set_status("正在爬取100期数据用于滚动回测（前50期训练，后50期测试）...", "#2980b9")
+        self.clear()
+        threading.Thread(target=self._do_backtest, daemon=True).start()
+
+    def _do_backtest(self):
+        try:
+            history = fetch_history(100)
+            try:
+                db_save_draws(history)
+            except Exception as db_err:
+                print(f"[DB warn] save draws failed: {db_err}")
+            self.after(0, lambda: self.set_status(
+                f"已获取 {len(history)} 期，正在滚动回测...", "#2980b9"))
+
+            result = run_backtest(history, train_window=50,
+                                  budget=self.budget, risk=self.risk)
+            try:
+                bt_id = db_save_backtest(result)
+                result["__db_id__"] = bt_id
+            except Exception as db_err:
+                print(f"[DB warn] save backtest failed: {db_err}")
+                result["__db_id__"] = None
+
+            self.after(0, lambda: self._render_backtest(result))
+            self.after(0, lambda: self.set_status(
+                f"回测完成 — {result['n_test']} 期测试", "#27ae60"))
+        except Exception as e:
+            err = str(e)
+            self.after(0, lambda: self.set_status(f"失败：{err}", "#c0392b"))
+            self.after(0, lambda: messagebox.showerror("出错了", f"回测失败：\n{err}"))
+        finally:
+            self.after(0, lambda: self.btn_backtest.config(state=tk.NORMAL, text="回测"))
+            self.after(0, lambda: self.btn_predict.config(state=tk.NORMAL))
+
+    def _render_backtest(self, result):
+        self.clear()
+        t = result["totals"]
+        n = result["n_test"]
+
+        self.append(f"【滚动回测报告 — {n} 期测试】\n", "h1")
+        self.append(
+            f"训练窗口：{result['train_window']} 期    每期预算：¥{result['budget']:.2f}    "
+            f"风险偏好：{result['risk']}", "hint")
+        if result.get("__db_id__"):
+            self.append(f"    DB记录ID：{result['__db_id__']}\n\n", "hint")
+        else:
+            self.append("\n\n", "hint")
+
+        self.append("──────  总体收益对比  ──────\n", "h2")
+        sep = "  "
+        cols = [("策略", 8, "left"), ("总投入", 12, "right"),
+                ("总回报", 12, "right"), ("净收益", 12, "right"),
+                ("ROI", 10, "right")]
+        self.append(sep.join(_vpad(n_, w, a) for n_, w, a in cols) + "\n", "hint")
+        self.append("─" * _vwidth(sep.join(_vpad(n_, w, a) for n_, w, a in cols)) + "\n", "dim")
+
+        for label, prefix in [("算法选号", "algo"), ("随机选号", "random")]:
+            cells = [
+                label,
+                f"¥{t[prefix+'_cost']:.2f}",
+                f"¥{t[prefix+'_payout']:.2f}",
+                f"¥{t[prefix+'_net']:+.2f}",
+                f"{t[prefix+'_roi']*100:+.2f}%",
+            ]
+            line = sep.join(_vpad(v, cols[i][1], cols[i][2]) for i, v in enumerate(cells))
+            self.append(line + "\n")
+
+        diff_net = t["algo_net"] - t["random_net"]
+        diff_roi = t["algo_roi"] - t["random_roi"]
+        self.append(
+            f"\n算法相对随机：净收益差 ¥{diff_net:+.2f}，ROI 差 {diff_roi*100:+.2f} 个百分点\n\n",
+            "ok" if diff_net > 0 else "dim")
+
+        self.append("──────  各玩法命中率与 ROI  ──────\n", "h2")
+        cols2 = [("玩法", 8, "left"),
+                 ("算法命中", 10, "right"), ("算法ROI", 10, "right"),
+                 ("随机命中", 10, "right"), ("随机ROI", 10, "right"),
+                 ("理论命中", 10, "right")]
+        self.append(sep.join(_vpad(n_, w, a) for n_, w, a in cols2) + "\n", "hint")
+        self.append("─" * _vwidth(sep.join(_vpad(n_, w, a) for n_, w, a in cols2)) + "\n", "dim")
+
+        theoretical = {
+            "二定单码": 0.01, "三定单码": 0.001, "四定单码": 0.0001,
+            "二定包码": 0.09, "三定包码": 0.027, "四定包码": 0.0016,
+            "二现": PROB_XIAN[2], "三现": PROB_XIAN[3], "四现": PROB_XIAN[4],
+        }
+        for play in ["二定单码", "二定包码", "三定单码", "三定包码",
+                     "四定单码", "四定包码", "二现", "三现", "四现"]:
+            s = result["play_stats"].get(play, {})
+            if not s.get("algo_bets") and not s.get("random_bets"):
+                continue
+            cells = [
+                play,
+                f"{s['algo_hits']}/{s['algo_bets']}={s['algo_hit_rate']*100:.1f}%",
+                f"{s['algo_roi']*100:+.2f}%",
+                f"{s['random_hits']}/{s['random_bets']}={s['random_hit_rate']*100:.1f}%",
+                f"{s['random_roi']*100:+.2f}%",
+                f"{theoretical.get(play, 0)*100:.2f}%",
+            ]
+            line = sep.join(_vpad(v, cols2[i][1], cols2[i][2]) for i, v in enumerate(cells))
+            self.append(line + "\n")
+
+        self.append("\n──────  逐期明细  ──────\n", "h2")
+        self.append("期号       开奖    算法投入  算法回报  随机投入  随机回报\n", "hint")
+        self.append("─" * 60 + "\n", "dim")
+        for d in result["details"]:
+            ae = d["algo_eval"]
+            re_ = d["random_eval"]
+            line = (f"{d['issue']:<10} {d['actual']:<7}"
+                    f"¥{ae['total_cost']:>7.2f} ¥{ae['total_payout']:>8.2f}"
+                    f"  ¥{re_['total_cost']:>7.2f} ¥{re_['total_payout']:>8.2f}\n")
+            tag = "ok" if ae["total_payout"] > ae["total_cost"] else None
+            self.append(line, tag)
+
+        self.append(
+            "\n* 结论参考：理论上排列五独立同分布，长期算法 vs 随机的命中率应趋同。"
+            "样本越大越能说明问题。50期波动较大属正常。\n",
+            "hint")
+        self._scroll_top()
 
     def _render(self, history, rec, pos_scores, digit_scores, budget_plans):
         self.clear()
@@ -602,7 +1051,8 @@ class App(tk.Tk):
             self.append(header + "\n", "hint")
             self.append("─" * _vwidth(header) + "\n", "dim")
 
-            order = ["二定包码", "三定包码", "四定包码", "二现", "三现", "四现"]
+            order = ["二定单码", "二定包码", "三定单码", "三定包码",
+                     "四定单码", "四定包码", "二现", "三现", "四现"]
             for play in order:
                 if play not in budget_plans:
                     continue
@@ -680,6 +1130,7 @@ class App(tk.Tk):
             self.append(f"[后位{h['nums'][4]}]\n", "dim")
 
         self.append("\n* 提示：本预测基于历史数据统计建模，仅供参考。彩票开奖本质随机，理性购彩。\n", "hint")
+        self._scroll_top()
 
     @staticmethod
     def _format_single_bet(items):
