@@ -430,6 +430,51 @@ def make_recommendations(predictor: Predictor):
     return rec, pos_scores, digit_scores
 
 
+def make_custom_recommendations(predictor: Predictor, config: dict):
+    """按用户自定义配置生成推荐方案。
+
+    config 结构:
+        enabled: set[str] — 启用的玩法名 (如 {"二定包码", "三定单码", "二现"})
+        bao_pos: dict[str, list[int]] — 各定位包码的位置选择数量
+            {"二定": [3,3,0,0], "三定": [3,3,3,0], "四定": [2,2,2,2]}
+            0 表示该位置不参与，1-9 表示该位置取 top-N
+        xian_manual: dict[str, list[int]] — 现玩法手动指定数字（可选）
+            {"二现": [3, 7]}; 未指定则用算法 top-N
+    """
+    pos_scores = predictor.position_scores()
+    digit_scores = predictor.global_digit_scores()
+    pos_names = Predictor.POS_NAMES
+
+    top_per_pos = []
+    for pos in range(4):
+        ranked = sorted(range(10), key=lambda d: pos_scores[pos][d], reverse=True)
+        top_per_pos.append(ranked)
+    best_digit_each_pos = [tp[0] for tp in top_per_pos]
+    digit_ranked = sorted(range(10), key=lambda d: digit_scores[d], reverse=True)
+
+    enabled = config.get("enabled", set())
+    bao_pos = config.get("bao_pos", {})
+    xian_manual = config.get("xian_manual", {})
+
+    rec = {}
+    for name in ["二定", "三定", "四定"]:
+        counts = bao_pos.get(name, [0, 0, 0, 0])
+        active_positions = [p for p in range(4) if counts[p] > 0]
+        rec[name] = {
+            "单码": [(pos_names[p], best_digit_each_pos[p]) for p in active_positions],
+            "包码": [(pos_names[p], top_per_pos[p][:counts[p]]) for p in active_positions],
+        }
+
+    for name, default_n in [("二现", 2), ("三现", 3), ("四现", 4)]:
+        manual = xian_manual.get(name)
+        if manual and len(manual) == default_n:
+            rec[name] = list(manual)
+        else:
+            rec[name] = digit_ranked[:default_n]
+
+    return rec, pos_scores, digit_scores, enabled
+
+
 # ============================================================
 # 预算分配
 # ============================================================
@@ -557,6 +602,82 @@ def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
 
     plans["__total__"] = round(total, 2)
     plans["__risk__"] = risk
+    return plans
+
+
+def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
+    """自定义模式：只对启用的玩法均分预算。"""
+    if budget <= 0 or not enabled:
+        return {"__total__": 0.0, "__risk__": "自定义"}
+
+    bao_combos = {}
+    for name in ["二定", "三定", "四定"]:
+        n = 1
+        for _, ds in rec[name]["包码"]:
+            n *= len(ds)
+        bao_combos[name] = n if rec[name]["包码"] else 0
+
+    schemes = {
+        "二定单码": {"组合数": 1, "单份成本": 1.0,
+                    "单注赔付": float(PAYOUT_RATIO["二定"]),
+                    "命中概率": 1 / 100.0},
+        "三定单码": {"组合数": 1, "单份成本": 1.0,
+                    "单注赔付": float(PAYOUT_RATIO["三定"]),
+                    "命中概率": 1 / 1000.0},
+        "四定单码": {"组合数": 1, "单份成本": 1.0,
+                    "单注赔付": float(PAYOUT_RATIO["四定"]),
+                    "命中概率": 1 / 10000.0},
+        "二定包码": {"组合数": bao_combos["二定"],
+                    "单份成本": round(bao_combos["二定"] * 0.1, 2) if bao_combos["二定"] else 0,
+                    "单注赔付": 0.1 * PAYOUT_RATIO["二定"],
+                    "命中概率": bao_combos["二定"] / 100.0 if bao_combos["二定"] else 0},
+        "三定包码": {"组合数": bao_combos["三定"],
+                    "单份成本": round(bao_combos["三定"] * 0.1, 2) if bao_combos["三定"] else 0,
+                    "单注赔付": 0.1 * PAYOUT_RATIO["三定"],
+                    "命中概率": bao_combos["三定"] / 1000.0 if bao_combos["三定"] else 0},
+        "四定包码": {"组合数": bao_combos["四定"],
+                    "单份成本": round(bao_combos["四定"] * 0.1, 2) if bao_combos["四定"] else 0,
+                    "单注赔付": 0.1 * PAYOUT_RATIO["四定"],
+                    "命中概率": bao_combos["四定"] / 10000.0 if bao_combos["四定"] else 0},
+        "二现": {"组合数": 1, "单份成本": 1.0,
+                "单注赔付": float(PAYOUT_RATIO["二现"]),
+                "命中概率": PROB_XIAN[2]},
+        "三现": {"组合数": 1, "单份成本": 1.0,
+                "单注赔付": float(PAYOUT_RATIO["三现"]),
+                "命中概率": PROB_XIAN[3]},
+        "四现": {"组合数": 1, "单份成本": 1.0,
+                "单注赔付": float(PAYOUT_RATIO["四现"]),
+                "命中概率": PROB_XIAN[4]},
+    }
+
+    valid = [p for p in enabled if p in schemes and schemes[p]["单份成本"] > 0]
+    if not valid:
+        return {"__total__": 0.0, "__risk__": "自定义"}
+
+    each = budget / len(valid)
+    plans = {}
+    total = 0.0
+    for play in valid:
+        s = schemes[play]
+        multiples = int(each / s["单份成本"])
+        if multiples < 1:
+            continue
+        cost = round(multiples * s["单份成本"], 2)
+        payout = round(multiples * s["单注赔付"], 2)
+        plans[play] = {
+            "倍数": multiples,
+            "组合数": s["组合数"],
+            "单份成本": s["单份成本"],
+            "实际投入": cost,
+            "命中概率": s["命中概率"],
+            "单注赔付": s["单注赔付"],
+            "中奖金额": payout,
+            "净收益": round(payout - cost, 2),
+        }
+        total += cost
+
+    plans["__total__"] = round(total, 2)
+    plans["__risk__"] = "自定义"
     return plans
 
 
@@ -830,6 +951,8 @@ class App(tk.Tk):
                                font=("微软雅黑", 9), padx=10)
         self.status.pack(fill=tk.X)
 
+        self._build_custom_panel()
+
         # 主显示区
         body = tk.Frame(self, bg="#f5f5f5")
         body.pack(fill=tk.BOTH, expand=True, padx=14, pady=10)
@@ -858,6 +981,236 @@ class App(tk.Tk):
         self.text.tag_configure("digit", font=("Consolas", 14, "bold"), foreground="#e74c3c")
         self.text.tag_configure("ok", foreground="#27ae60")
         self.text.tag_configure("dim", foreground="#999")
+
+    def _build_custom_panel(self):
+        """状态栏下方的自定义策略入口栏。"""
+        bar = tk.Frame(self, bg="#fff8e7", height=32)
+        bar.pack(fill=tk.X)
+
+        self.custom_enabled_var = tk.BooleanVar(value=False)
+        chk = tk.Checkbutton(
+            bar, text="启用自定义策略", variable=self.custom_enabled_var,
+            font=("微软雅黑", 9), bg="#fff8e7", fg="#7d5a00",
+            activebackground="#fff8e7", selectcolor="white",
+            command=self._save_custom_config)
+        chk.pack(side=tk.LEFT, padx=(14, 6), pady=4)
+
+        btn_cfg = tk.Button(
+            bar, text="配置...", font=("微软雅黑", 9),
+            bg="#f39c12", fg="white",
+            activebackground="#d68910", activeforeground="white",
+            relief=tk.FLAT, cursor="hand2", padx=10,
+            command=self.open_custom_dialog)
+        btn_cfg.pack(side=tk.LEFT, pady=4)
+
+        self.custom_summary = tk.Label(
+            bar, text="（启用后，预测将按你的设置生成方案）",
+            font=("微软雅黑", 9), bg="#fff8e7", fg="#a89968", anchor="w")
+        self.custom_summary.pack(side=tk.LEFT, padx=10, pady=4)
+
+        self.custom_config = self._load_custom_config()
+        active = self.custom_config.pop("__active__", False)
+        self.custom_enabled_var.set(active)
+        self._refresh_custom_summary()
+
+    @staticmethod
+    def _custom_config_path():
+        return os.path.join(os.path.dirname(__file__), "custom_config.json")
+
+    def _load_custom_config(self):
+        default = {
+            "enabled": {"二定包码", "三定包码", "二现", "三现"},
+            "bao_pos": {
+                "二定": [0, 3, 0, 3],
+                "三定": [3, 3, 3, 0],
+                "四定": [2, 2, 2, 2],
+            },
+            "xian_manual": {},
+            "__active__": False,
+        }
+        path = self._custom_config_path()
+        if not os.path.exists(path):
+            return default
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {
+                "enabled": set(data.get("enabled", [])),
+                "bao_pos": data.get("bao_pos", default["bao_pos"]),
+                "xian_manual": data.get("xian_manual", {}),
+                "__active__": bool(data.get("__active__", False)),
+            }
+        except Exception:
+            return default
+
+    def _save_custom_config(self):
+        try:
+            cfg = self.custom_config
+            data = {
+                "__active__": bool(self.custom_enabled_var.get()),
+                "enabled": sorted(cfg.get("enabled", set())),
+                "bao_pos": cfg.get("bao_pos", {}),
+                "xian_manual": cfg.get("xian_manual", {}),
+            }
+            with open(self._custom_config_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[warn] save custom config failed: {e}")
+
+    def _refresh_custom_summary(self):
+        cfg = self.custom_config
+        en = cfg.get("enabled", set())
+        if not en:
+            self.custom_summary.config(text="（未勾选任何玩法）")
+            return
+        parts = []
+        for name in ["二定单码", "二定包码", "三定单码", "三定包码",
+                     "四定单码", "四定包码", "二现", "三现", "四现"]:
+            if name in en:
+                parts.append(name)
+        self.custom_summary.config(
+            text=f"已选: {' / '.join(parts)}（共 {len(parts)} 项）")
+
+    def open_custom_dialog(self):
+        """弹出自定义策略配置对话框。"""
+        dlg = tk.Toplevel(self)
+        dlg.title("自定义策略配置")
+        dlg.geometry("580x640")
+        dlg.minsize(560, 600)
+        dlg.configure(bg="#f5f5f5")
+        dlg.transient(self)
+        dlg.grab_set()
+
+        cfg = self.custom_config
+
+        play_vars = {}
+        play_frame = tk.LabelFrame(
+            dlg, text=" 玩法选择（勾选要参与的玩法） ",
+            font=("微软雅黑", 10, "bold"),
+            bg="#f5f5f5", fg="#2c3e50", padx=10, pady=8)
+        play_frame.pack(fill=tk.X, padx=14, pady=(12, 6))
+
+        plays_layout = [
+            ["二定单码", "二定包码"],
+            ["三定单码", "三定包码"],
+            ["四定单码", "四定包码"],
+            ["二现", "三现", "四现"],
+        ]
+        for r, row in enumerate(plays_layout):
+            for c, name in enumerate(row):
+                v = tk.BooleanVar(value=name in cfg.get("enabled", set()))
+                play_vars[name] = v
+                tk.Checkbutton(
+                    play_frame, text=name, variable=v,
+                    font=("微软雅黑", 10), bg="#f5f5f5", anchor="w", width=12
+                ).grid(row=r, column=c, sticky="w", padx=4, pady=2)
+
+        bao_frame = tk.LabelFrame(
+            dlg, text=" 定位包码：每位取多少个数（0=不选这位，1-9=取算法 top-N） ",
+            font=("微软雅黑", 10, "bold"),
+            bg="#f5f5f5", fg="#2c3e50", padx=10, pady=8)
+        bao_frame.pack(fill=tk.X, padx=14, pady=6)
+
+        pos_labels = ["千位", "百位", "十位", "个位"]
+        bao_vars = {}
+        tk.Label(bao_frame, text="", bg="#f5f5f5", width=8).grid(row=0, column=0)
+        for c, lab in enumerate(pos_labels):
+            tk.Label(bao_frame, text=lab, font=("微软雅黑", 9, "bold"),
+                     bg="#f5f5f5", fg="#555").grid(row=0, column=c + 1, padx=8)
+
+        for r, def_name in enumerate(["二定", "三定", "四定"]):
+            tk.Label(bao_frame, text=f"{def_name}包码",
+                     font=("微软雅黑", 10), bg="#f5f5f5",
+                     fg="#2c3e50").grid(row=r + 1, column=0, padx=4, pady=4, sticky="w")
+            counts = cfg.get("bao_pos", {}).get(def_name, [0, 0, 0, 0])
+            row_vars = []
+            for c in range(4):
+                sv = tk.StringVar(value=str(counts[c] if c < len(counts) else 0))
+                ttk.Combobox(
+                    bao_frame, textvariable=sv,
+                    values=[str(i) for i in range(10)],
+                    state="readonly", width=4,
+                    font=("Consolas", 10)
+                ).grid(row=r + 1, column=c + 1, padx=8, pady=4)
+                row_vars.append(sv)
+            bao_vars[def_name] = row_vars
+
+        xian_frame = tk.LabelFrame(
+            dlg, text=" 现玩法手动指定数字（留空则用算法 top-N） ",
+            font=("微软雅黑", 10, "bold"),
+            bg="#f5f5f5", fg="#2c3e50", padx=10, pady=8)
+        xian_frame.pack(fill=tk.X, padx=14, pady=6)
+
+        xian_vars = {}
+        for r, (name, n) in enumerate([("二现", 2), ("三现", 3), ("四现", 4)]):
+            tk.Label(xian_frame, text=f"{name}（{n}个数字，用空格分隔）",
+                     font=("微软雅黑", 9), bg="#f5f5f5",
+                     fg="#555").grid(row=r, column=0, sticky="w", padx=4, pady=3)
+            cur = cfg.get("xian_manual", {}).get(name, [])
+            sv = tk.StringVar(value=" ".join(str(x) for x in cur))
+            tk.Entry(xian_frame, textvariable=sv,
+                     font=("Consolas", 10), width=20).grid(
+                row=r, column=1, padx=8, pady=3, sticky="w")
+            xian_vars[name] = (sv, n)
+
+        btn_bar = tk.Frame(dlg, bg="#f5f5f5")
+        btn_bar.pack(fill=tk.X, padx=14, pady=10)
+
+        def on_save():
+            new_enabled = {n for n, v in play_vars.items() if v.get()}
+            new_bao = {}
+            for def_name, vars_ in bao_vars.items():
+                vals = []
+                for sv in vars_:
+                    try:
+                        vals.append(max(0, min(9, int(sv.get()))))
+                    except ValueError:
+                        vals.append(0)
+                new_bao[def_name] = vals
+            new_xian = {}
+            for name, (sv, n) in xian_vars.items():
+                raw = sv.get().strip()
+                if not raw:
+                    continue
+                parts = raw.replace(",", " ").split()
+                try:
+                    digits = [int(x) for x in parts]
+                except ValueError:
+                    messagebox.showerror("格式错误",
+                                          f"{name} 的数字格式不正确：{raw}")
+                    return
+                if len(digits) != n or not all(0 <= d <= 9 for d in digits):
+                    messagebox.showerror("格式错误",
+                                          f"{name} 需要 {n} 个 0-9 的数字")
+                    return
+                if len(set(digits)) != n:
+                    messagebox.showerror("格式错误",
+                                          f"{name} 的 {n} 个数字不能重复")
+                    return
+                new_xian[name] = digits
+
+            self.custom_config = {
+                "enabled": new_enabled,
+                "bao_pos": new_bao,
+                "xian_manual": new_xian,
+            }
+            self.custom_enabled_var.set(True)
+            self._save_custom_config()
+            self._refresh_custom_summary()
+            dlg.destroy()
+
+        tk.Button(btn_bar, text="确定",
+                  font=("微软雅黑", 10, "bold"),
+                  bg="#27ae60", fg="white",
+                  activebackground="#1e8449", activeforeground="white",
+                  relief=tk.FLAT, cursor="hand2", padx=20, pady=4,
+                  command=on_save).pack(side=tk.RIGHT, padx=(6, 0))
+        tk.Button(btn_bar, text="取消",
+                  font=("微软雅黑", 10),
+                  bg="#bdc3c7", fg="#333",
+                  activebackground="#95a5a6", activeforeground="#333",
+                  relief=tk.FLAT, cursor="hand2", padx=14, pady=4,
+                  command=dlg.destroy).pack(side=tk.RIGHT)
 
     def _show_risk_dropdown(self):
         self.quant_frame.pack_forget()
@@ -921,18 +1274,29 @@ class App(tk.Tk):
             self.after(0, lambda: self.set_status(f"已获取 {len(history)} 期数据，正在分析...", "#2980b9"))
 
             predictor = Predictor(history)
-            rec, pos_scores, digit_scores = make_recommendations(predictor)
-            budget_plans = calculate_budget_plans(self.budget, rec, self.risk)
+            use_custom = self.custom_enabled_var.get()
+            print(f"[预测] use_custom={use_custom} config.enabled={self.custom_config.get('enabled')}")
+            if use_custom:
+                rec, pos_scores, digit_scores, enabled = make_custom_recommendations(
+                    predictor, self.custom_config)
+                budget_plans = calculate_custom_budget_plans(self.budget, rec, enabled)
+                print(f"[预测] 自定义路径 plans={[k for k in budget_plans if not k.startswith('__')]}")
+            else:
+                rec, pos_scores, digit_scores = make_recommendations(predictor)
+                budget_plans = calculate_budget_plans(self.budget, rec, self.risk)
+                print(f"[预测] 标准路径 risk={self.risk}")
 
             try:
                 next_issue = self._next_issue(history[0]["issue"])
-                db_save_prediction(next_issue, self.budget, self.risk, rec,
+                db_save_prediction(next_issue, self.budget,
+                                   "自定义" if use_custom else self.risk, rec,
                                    budget_plans, pos_scores, digit_scores)
             except Exception as db_err:
                 print(f"[DB warn] save prediction failed: {db_err}")
 
             self.after(0, lambda: self._render(history, rec, pos_scores, digit_scores, budget_plans))
-            self.after(0, lambda: self.set_status(f"完成 — 已分析 {len(history)} 期", "#27ae60"))
+            mode_label = f"自定义模式 ({len([k for k in budget_plans if not k.startswith('__')])} 项)" if use_custom else f"标准模式 ({self.risk})"
+            self.after(0, lambda: self.set_status(f"完成 — {mode_label}", "#27ae60"))
         except Exception as e:
             err = str(e)
             self.after(0, lambda: self.set_status(f"失败：{err}", "#c0392b"))
@@ -1093,6 +1457,7 @@ class App(tk.Tk):
 
             cols = [
                 ("玩法",         8, "left"),
+                ("推荐组合",    24, "left"),
                 ("投注金额",     9, "right"),
                 ("倍数×组合数", 10, "left"),
                 ("命中概率",     8, "right"),
@@ -1112,6 +1477,7 @@ class App(tk.Tk):
                 p = budget_plans[play]
                 cells = [
                     play,
+                    self._format_play_digits(play, rec),
                     f"¥{p['实际投入']:.2f}",
                     f"{p['倍数']}×{p['组合数']}",
                     f"{p['命中概率']*100:.3f}%",
@@ -1127,36 +1493,53 @@ class App(tk.Tk):
         elif self.budget > 0:
             self.append(f"【预算 ¥{self.budget:.2f} 过小，无法分配任何玩法】\n\n", "h1")
 
+        is_custom = risk == "自定义"
+
         # ========== 定位玩法 ==========
-        self.append("【定位玩法 — 千百十个位置】\n", "h1")
-        self.append("规则：选定位置上中对应数字才算中。包码会拆成多注单码。\n\n", "hint")
+        any_def_play = any(f"{n}{k}" in budget_plans
+                           for n in ["二定", "三定", "四定"]
+                           for k in ["单码", "包码"]) if is_custom else True
+        if any_def_play:
+            self.append("【定位玩法 — 千百十个位置】\n", "h1")
+            self.append("规则：选定位置上中对应数字才算中。包码会拆成多注单码。\n\n", "hint")
 
-        for name in ["二定", "三定", "四定"]:
-            data = rec[name]
-            self.append(f"▶ {name}\n", "h2")
-            single_str = " | ".join(f"{p}={d}" for p, d in data["单码"])
-            self.append(f"  推荐单码：{single_str}\n")
-            # 显示具体投注号
-            self.append(f"  投注示例：", "hint")
-            self.append(self._format_single_bet(data["单码"]) + "\n", "num")
+            for name in ["二定", "三定", "四定"]:
+                data = rec[name]
+                show_single = (not is_custom) or (f"{name}单码" in budget_plans)
+                show_bao = (not is_custom) or (f"{name}包码" in budget_plans)
+                if not (show_single or show_bao) or not data["单码"]:
+                    continue
+                self.append(f"▶ {name}\n", "h2")
 
-            bao_parts = []
-            total_combos = 1
-            for p, ds in data["包码"]:
-                bao_parts.append(f"{p}∈{{{','.join(str(x) for x in ds)}}}")
-                total_combos *= len(ds)
-            self.append(f"  推荐包码：{' , '.join(bao_parts)}  共 {total_combos} 注\n\n")
+                if show_single:
+                    single_str = " | ".join(f"{p}={d}" for p, d in data["单码"])
+                    self.append(f"  推荐单码：{single_str}\n")
+                    self.append(f"  投注示例：", "hint")
+                    self.append(self._format_single_bet(data["单码"]) + "\n", "num")
+
+                if show_bao and data["包码"]:
+                    bao_parts = []
+                    total_combos = 1
+                    for p, ds in data["包码"]:
+                        bao_parts.append(f"{p}∈{{{','.join(str(x) for x in ds)}}}")
+                        total_combos *= len(ds)
+                    self.append(f"  推荐包码：{' , '.join(bao_parts)}  共 {total_combos} 注\n")
+                self.append("\n")
 
         # ========== 现玩法 ==========
-        self.append("【现玩法 — 不论位置只看数字出现】\n", "h1")
-        self.append("规则：选中的所有数字都要在开奖号码中出现才算中。\n\n", "hint")
+        any_xian_play = any(n in budget_plans for n in ["二现", "三现", "四现"]) if is_custom else True
+        if any_xian_play:
+            self.append("【现玩法 — 不论位置只看数字出现】\n", "h1")
+            self.append("规则：选中的所有数字都要在开奖号码中出现才算中。\n\n", "hint")
 
-        for name, count in [("二现", 2), ("三现", 3), ("四现", 4)]:
-            digits = rec[name]
-            self.append(f"▶ {name}：", "h2")
-            self.append(" ".join(str(d) for d in digits) + "\n", "digit")
-            self.append(f"  即买入数字 {{{','.join(str(d) for d in digits)}}}，"
-                        f"开奖号码出现这 {count} 个数字（不论位置）即中\n\n", "hint")
+            for name, count in [("二现", 2), ("三现", 3), ("四现", 4)]:
+                if is_custom and name not in budget_plans:
+                    continue
+                digits = rec[name]
+                self.append(f"▶ {name}：", "h2")
+                self.append(" ".join(str(d) for d in digits) + "\n", "digit")
+                self.append(f"  即买入数字 {{{','.join(str(d) for d in digits)}}}，"
+                            f"开奖号码出现这 {count} 个数字（不论位置）即中\n\n", "hint")
 
         # ========== 评分明细 ==========
         self.append("\n──────────  评分明细（仅参考）  ──────────\n", "dim")
@@ -1191,6 +1574,28 @@ class App(tk.Tk):
         order = ["千位", "百位", "十位", "个位"]
         m = {pos: d for pos, d in items}
         return " ".join(str(m[p]) if p in m else "*" for p in order)
+
+    @staticmethod
+    def _format_play_digits(play, rec):
+        """把推荐组合压成一行，给预算表的"推荐组合"列用。"""
+        order = ["千位", "百位", "十位", "个位"]
+        if play in ("二现", "三现", "四现"):
+            return "".join(str(d) for d in rec[play])
+        def_name = play[:2]
+        kind = "单码" if "单码" in play else "包码"
+        items = rec[def_name][kind]
+        if not items:
+            return "-"
+        m = {pos: ds for pos, ds in items}
+        if kind == "单码":
+            return " ".join(str(m[p]) if p in m else "*" for p in order)
+        parts = []
+        for p in order:
+            if p in m:
+                parts.append("".join(str(d) for d in m[p]))
+            else:
+                parts.append("-")
+        return " ".join(parts)
 
     def on_load_quant(self):
         """根据下拉框选择的数据量重跑量化模型并展示报告。"""
