@@ -6,11 +6,7 @@
     <title>排列五预测器</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
             --primary: #e74c3c;
@@ -22,438 +18,253 @@
             --success: #27ae60;
             --text: #ecf0f1;
             --text-muted: #95a5a6;
+            --border: rgba(255,255,255,0.1);
+            --bg-card: rgba(26,26,46,0.8);
         }
 
         body {
             font-family: 'Noto Sans SC', sans-serif;
             background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            min-height: 100vh;
-            color: var(--text);
-            overflow-x: hidden;
+            min-height: 100vh; color: var(--text); overflow-x: hidden;
         }
 
-        .bg-glow {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-        }
-
+        .bg-glow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
         .bg-glow::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle at 30% 30%, rgba(231, 76, 60, 0.15) 0%, transparent 50%),
-                        radial-gradient(circle at 70% 70%, rgba(52, 152, 219, 0.1) 0%, transparent 50%);
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle at 30% 30%, rgba(231,76,60,0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 70%, rgba(52,152,219,0.1) 0%, transparent 50%);
             animation: rotate 30s linear infinite;
         }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
+        .container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 2rem; }
 
-        .container {
-            position: relative;
-            z-index: 1;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        header {
-            text-align: center;
-            padding: 3rem 0;
-        }
-
+        header { text-align: center; padding: 2rem 0 1rem; }
         h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 3rem;
-            font-weight: 700;
+            font-family: 'Orbitron', sans-serif; font-size: 3rem; font-weight: 700;
             background: linear-gradient(135deg, var(--primary), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 0.5rem;
-            text-shadow: 0 0 40px rgba(231, 76, 60, 0.3);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 0.5rem;
+            text-shadow: 0 0 40px rgba(231,76,60,0.3);
         }
+        .subtitle { color: var(--text-muted); font-size: 1rem; }
 
-        .subtitle {
-            color: var(--text-muted);
-            font-size: 1rem;
+        /* 标签页 */
+        .tabs { display: flex; gap: 0; margin-bottom: 1.5rem; justify-content: center; }
+        .tab-btn {
+            padding: 0.75rem 2.5rem; border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+            color: var(--text-muted); cursor: pointer; font-size: 1rem; font-family: inherit;
+            transition: all 0.3s ease;
         }
+        .tab-btn:first-child { border-radius: 12px 0 0 12px; }
+        .tab-btn:last-child { border-radius: 0 12px 12px 0; }
+        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .tab-btn:hover:not(.active) { background: rgba(255,255,255,0.08); color: var(--text); }
 
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* 控制面板 */
         .control-panel {
-            background: rgba(26, 26, 46, 0.8);
-            backdrop-filter: blur(20px);
-            border-radius: 20px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            background: var(--bg-card); backdrop-filter: blur(20px); border-radius: 20px;
+            padding: 1.5rem 2rem; margin-bottom: 1.5rem; border: 1px solid var(--border);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
         }
-
-        .controls {
-            display: flex;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-            align-items: flex-end;
-            justify-content: center;
-        }
-
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .control-group label {
-            font-size: 0.875rem;
-            color: var(--text-muted);
-            font-weight: 500;
-        }
+        .controls { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; justify-content: center; }
+        .control-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .control-group label { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
 
         .input-field {
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 0.875rem 1.25rem;
-            color: var(--text);
-            font-size: 1rem;
-            font-family: inherit;
-            transition: all 0.3s ease;
-            width: 180px;
+            background: rgba(255,255,255,0.05); border: 2px solid var(--border);
+            border-radius: 10px; padding: 0.7rem 1rem; color: var(--text);
+            font-size: 0.95rem; font-family: inherit; transition: all 0.3s ease; width: 160px;
         }
+        .input-field:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px rgba(231,76,60,0.15); }
+        select.input-field { cursor: pointer; }
 
-        .input-field:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.2);
+        .btn {
+            border: none; border-radius: 10px; padding: 0.7rem 2rem; color: white;
+            font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease;
+            font-family: inherit; white-space: nowrap;
         }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
+        .btn-predict { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); box-shadow: 0 10px 30px rgba(231,76,60,0.3); }
+        .btn-predict:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(231,76,60,0.4); }
+        .btn-backtest { background: linear-gradient(135deg, var(--secondary), #1f618d); box-shadow: 0 10px 30px rgba(52,152,219,0.3); }
+        .btn-backtest:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(52,152,219,0.4); }
+        .btn-quant { background: linear-gradient(135deg, var(--success), #1e8449); box-shadow: 0 10px 30px rgba(39,174,96,0.3); }
+        .btn-quant:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(39,174,96,0.4); }
+        .btn-sm { padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 8px; }
+        .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+        .btn-outline:hover { background: rgba(243,156,18,0.15); }
 
-        select.input-field {
-            cursor: pointer;
+        /* 自定义策略栏 */
+        .custom-bar {
+            background: rgba(243,156,18,0.08); border: 1px solid rgba(243,156,18,0.2);
+            border-radius: 12px; padding: 0.75rem 1.25rem; margin-top: 1rem;
+            display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
         }
+        .custom-bar label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem; color: #c98a00; }
+        .custom-bar input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+        .custom-summary { font-size: 0.85rem; color: #a89968; flex: 1; min-width: 200px; }
 
-        .btn-predict {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            border: none;
-            border-radius: 12px;
-            padding: 0.875rem 2.5rem;
-            color: white;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 10px 30px rgba(231, 76, 60, 0.3);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .btn-predict:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 40px rgba(231, 76, 60, 0.4);
-        }
-
-        .btn-predict:active {
-            transform: translateY(0);
-        }
-
-        .btn-predict:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
+        /* 状态栏 */
         .status-bar {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            padding: 1rem 1.5rem;
-            margin-top: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            background: rgba(255,255,255,0.03); border-radius: 10px; padding: 0.75rem 1.25rem;
+            margin-top: 1rem; display: flex; align-items: center; gap: 0.75rem;
         }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
+        .status-dot.active { background: var(--success); animation: pulse 1.5s infinite; }
+        .status-dot.error { background: var(--primary); }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .status-text { font-size: 0.85rem; color: var(--text-muted); }
 
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--text-muted);
-            animation: pulse 2s infinite;
-        }
-
-        .status-dot.active {
-            background: var(--success);
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .results {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 1.5rem;
-            opacity: 0;
-            transform: translateY(30px);
-            transition: all 0.6s ease;
-        }
-
-        .results.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
+        /* 结果卡片 */
+        .results { margin-top: 1.5rem; }
+        .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.25rem; }
         .card {
-            background: rgba(26, 26, 46, 0.8);
-            backdrop-filter: blur(20px);
-            border-radius: 20px;
-            padding: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            background: var(--bg-card); backdrop-filter: blur(20px); border-radius: 18px;
+            padding: 1.5rem; border: 1px solid var(--border);
+            box-shadow: 0 20px 40px -12px rgba(0,0,0,0.4); transition: transform 0.3s;
         }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.6);
-        }
+        .card:hover { transform: translateY(-3px); }
+        .card.span-2 { grid-column: 1 / -1; }
 
         .card-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem;
+            display: flex; align-items: center; gap: 0.6rem;
         }
+        .card-title::before { content: ''; width: 4px; height: 20px; background: linear-gradient(180deg, var(--primary), var(--accent)); border-radius: 2px; }
 
-        .card-title::before {
-            content: '';
-            width: 5px;
-            height: 24px;
-            background: linear-gradient(180deg, var(--primary), var(--accent));
-            border-radius: 3px;
-        }
-
-        .latest-draw {
-            grid-column: 1 / -1;
-        }
-
-        .draw-numbers {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
+        /* 最新开奖 */
+        .draw-numbers { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
         .number-ball {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.75rem;
-            font-weight: 700;
+            width: 62px; height: 62px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-family: 'Orbitron', sans-serif; font-size: 1.6rem; font-weight: 700;
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            box-shadow: 0 10px 30px rgba(231, 76, 60, 0.4), inset 0 -5px 15px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 25px rgba(231,76,60,0.35), inset 0 -4px 10px rgba(0,0,0,0.3);
             animation: popIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) backwards;
         }
-
         .number-ball:nth-child(2) { animation-delay: 0.1s; }
         .number-ball:nth-child(3) { animation-delay: 0.2s; }
         .number-ball:nth-child(4) { animation-delay: 0.3s; }
         .number-ball:nth-child(5) { animation-delay: 0.4s; }
+        .number-ball.special { background: linear-gradient(135deg, var(--accent), #d68910); box-shadow: 0 8px 25px rgba(243,156,18,0.35), inset 0 -4px 10px rgba(0,0,0,0.3); }
+        @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        @keyframes popIn {
-            from {
-                transform: scale(0);
-                opacity: 0;
-            }
-            to {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
+        .draw-info { text-align: center; margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem; }
 
-        .number-ball.special {
-            background: linear-gradient(135deg, var(--accent), #d68910);
-            box-shadow: 0 10px 30px rgba(243, 156, 18, 0.4), inset 0 -5px 15px rgba(0, 0, 0, 0.3);
-        }
-
-        .draw-info {
-            text-align: center;
-            margin-bottom: 1.5rem;
-            color: var(--text-muted);
-        }
-
-        .recommendation {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-        }
-
+        /* 推荐块 */
         .rec-item {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            padding: 1.25rem;
-            border-left: 4px solid var(--primary);
+            background: rgba(255,255,255,0.03); border-radius: 10px;
+            padding: 1rem 1.25rem; border-left: 3px solid var(--primary); margin-bottom: 0.75rem;
         }
+        .rec-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+        .rec-value { font-size: 1.3rem; font-weight: 700; font-family: 'Orbitron', sans-serif; color: var(--accent); }
+        .rec-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem; }
 
-        .rec-label {
-            font-size: 0.875rem;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
+        /* 预算表 */
+        .budget-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; }
+        .budget-table th, .budget-table td { padding: 0.75rem 0.8rem; text-align: left; }
+        .budget-table th { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+        .budget-table tr:hover td { background: rgba(255,255,255,0.03); }
+        .budget-table td:first-child { border-radius: 6px 0 0 6px; }
+        .budget-table td:last-child { border-radius: 0 6px 6px 0; }
+
+        .highlight { color: var(--accent); font-weight: 600; }
+        .success { color: var(--success); }
+        .dim { color: var(--text-muted); font-size: 0.85rem; }
+
+        /* 回测表格 */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .data-table th, .data-table td { padding: 0.5rem 0.7rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .data-table th { color: var(--text-muted); font-weight: 500; text-align: right; }
+        .data-table td:first-child, .data-table th:first-child { text-align: left; }
+        .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        /* 评分明细 */
+        .score-grid { font-family: 'Consolas', 'Courier New', monospace; font-size: 0.82rem; line-height: 1.8; color: var(--text-muted); }
+        .score-grid span { display: inline-block; width: 50px; text-align: center; }
+
+        /* 量化因子条 */
+        .factor-bar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+        .factor-name { width: 130px; font-size: 0.85rem; text-align: right; color: var(--text-muted); }
+        .factor-bar-inner { flex: 1; height: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; }
+        .factor-bar-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, var(--secondary), var(--success)); transition: width 0.5s ease; }
+        .factor-val { width: 60px; font-size: 0.8rem; text-align: left; font-family: 'Orbitron', sans-serif; }
+
+        /* 模态弹窗 */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #1a1a2e; border: 1px solid var(--border); border-radius: 18px;
+            padding: 2rem; width: 90%; max-width: 620px; max-height: 85vh; overflow-y: auto;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6);
         }
-
-        .rec-value {
-            font-size: 1.5rem;
-            font-weight: 700;
-            font-family: 'Orbitron', sans-serif;
-            color: var(--accent);
+        .modal h3 { font-size: 1.2rem; margin-bottom: 1.25rem; color: var(--text); }
+        .modal-section { margin-bottom: 1.25rem; }
+        .modal-section h4 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.75rem; }
+        .modal-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; align-items: center; }
+        .modal-row label { font-size: 0.85rem; color: var(--text-muted); min-width: 70px; }
+        .modal-row select, .modal-row input {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+            border-radius: 6px; padding: 0.4rem 0.5rem; color: var(--text); font-size: 0.85rem;
         }
+        .modal-row select { width: 60px; }
+        .modal-row input { width: 200px; }
+        .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+        .play-checks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+        .play-checks label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; cursor: pointer; color: var(--text); }
+        .play-checks input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); }
 
-        .rec-sub {
-            font-size: 0.8125rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-        }
-
-        .budget-card {
-            grid-column: 1 / -1;
-        }
-
-        .budget-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-
-        .budget-table th,
-        .budget-table td {
-            padding: 1rem;
-            text-align: left;
-        }
-
-        .budget-table th {
-            font-size: 0.8125rem;
-            color: var(--text-muted);
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .budget-table tr:hover td {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .budget-table td:first-child {
-            border-radius: 8px 0 0 8px;
-        }
-
-        .budget-table td:last-child {
-            border-radius: 0 8px 8px 8px;
-        }
-
-        .highlight {
-            color: var(--accent);
-            font-weight: 600;
-        }
-
-        .success {
-            color: var(--success);
-        }
-
-        footer {
-            text-align: center;
-            padding: 3rem 0;
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-
+        /* 风险提示 */
         .warning {
-            background: rgba(243, 156, 18, 0.1);
-            border: 1px solid rgba(243, 156, 18, 0.2);
-            border-radius: 12px;
-            padding: 1rem 1.5rem;
-            margin-top: 2rem;
-            grid-column: 1 / -1;
-            display: flex;
-            align-items: flex-start;
-            gap: 1rem;
+            background: rgba(243,156,18,0.1); border: 1px solid rgba(243,156,18,0.2);
+            border-radius: 12px; padding: 1rem 1.5rem; margin-top: 1.5rem;
+            display: flex; align-items: flex-start; gap: 0.75rem;
         }
+        .warning-icon { font-size: 1.3rem; flex-shrink: 0; }
+        .warning-text { font-size: 0.85rem; line-height: 1.6; color: var(--text-muted); }
 
-        .warning-icon {
-            font-size: 1.5rem;
-        }
+        footer { text-align: center; padding: 2rem 0; color: var(--text-muted); font-size: 0.8rem; }
 
-        .warning-text {
-            font-size: 0.875rem;
-            line-height: 1.6;
-        }
+        .section-title { font-size: 1rem; font-weight: 700; color: var(--text); margin: 1.5rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
 
         @media (max-width: 768px) {
-            h1 {
-                font-size: 2rem;
-            }
-
-            .controls {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .control-group,
-            .input-field,
-            .btn-predict {
-                width: 100%;
-            }
-
-            .results {
-                grid-template-columns: 1fr;
-            }
-
-            .number-ball {
-                width: 55px;
-                height: 55px;
-                font-size: 1.375rem;
-            }
-
-            .budget-table {
-                font-size: 0.8125rem;
-            }
-
-            .budget-table th,
-            .budget-table td {
-                padding: 0.75rem 0.5rem;
-            }
+            h1 { font-size: 2rem; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .control-group, .input-field, .btn { width: 100%; }
+            .results-grid { grid-template-columns: 1fr; }
+            .number-ball { width: 52px; height: 52px; font-size: 1.3rem; }
+            .budget-table { font-size: 0.78rem; }
+            .budget-table th, .budget-table td { padding: 0.5rem 0.4rem; }
+            .modal { padding: 1.5rem; width: 95%; }
         }
     </style>
 </head>
 <body>
-    <div class="bg-glow"></div>
+<div class="bg-glow"></div>
 
-    <div class="container">
-        <header>
-            <h1>排列五预测器</h1>
-            <p class="subtitle">基于历史数据的智能分析预测</p>
-        </header>
+<div class="container">
+    <header>
+        <h1>排列五预测器</h1>
+        <p class="subtitle">基于多特征加权模型的历史数据分析</p>
+    </header>
 
+    <!-- 标签页 -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="predict">预测</button>
+        <button class="tab-btn" data-tab="backtest">回测</button>
+        <button class="tab-btn" data-tab="quant">量化</button>
+    </div>
+
+    <!-- ==================== 预测面板 ==================== -->
+    <div class="tab-panel active" id="panel-predict">
         <div class="control-panel">
             <div class="controls">
                 <div class="control-group">
                     <label for="budget">本期投入（元）</label>
-                    <input type="number" id="budget" class="input-field" value="100" min="0">
+                    <input type="number" id="budget" class="input-field" value="100" min="0" step="1">
                 </div>
                 <div class="control-group">
                     <label for="risk">风险偏好</label>
@@ -463,351 +274,809 @@
                         <option value="激进">激进</option>
                     </select>
                 </div>
-                <button class="btn-predict" id="predictBtn">开始预测</button>
+                <button class="btn btn-predict" id="predictBtn" onclick="doPredict()">开始预测</button>
             </div>
+
+            <div class="custom-bar">
+                <label>
+                    <input type="checkbox" id="customEnabled" onchange="toggleCustom()"> 启用自定义策略
+                </label>
+                <button class="btn btn-sm btn-outline" onclick="openConfigModal()">配置...</button>
+                <span class="custom-summary" id="customSummary">（启用后，预测将按你的设置生成方案）</span>
+            </div>
+
             <div class="status-bar">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">就绪 — 点击"开始预测"进行分析</span>
+                <div class="status-dot" id="predictStatusDot"></div>
+                <span class="status-text" id="predictStatusText">就绪 — 点击"开始预测"进行分析</span>
             </div>
         </div>
 
-        <div class="results" id="results">
-            <div class="card latest-draw">
+        <div class="results" id="predictResults" style="display:none;">
+            <!-- 最新开奖 -->
+            <div class="card span-2">
                 <h2 class="card-title">最新开奖</h2>
-                <div class="draw-info" id="drawInfo">
-                    第 -- 期 （----年--月--日）
-                </div>
-                <div class="draw-numbers" id="drawNumbers">
-                    <div class="number-ball">-</div>
-                    <div class="number-ball">-</div>
-                    <div class="number-ball">-</div>
-                    <div class="number-ball">-</div>
-                    <div class="number-ball special">-</div>
-                </div>
+                <div class="draw-info" id="drawInfo">-</div>
+                <div class="draw-numbers" id="drawNumbers"></div>
             </div>
 
-            <div class="card">
-                <h2 class="card-title">二定推荐</h2>
-                <div class="recommendation">
-                    <div class="rec-item">
-                        <div class="rec-label">推荐单码</div>
-                        <div class="rec-value" id="twoDefSingle">-</div>
-                        <div class="rec-sub" id="twoDefSingleDesc">-</div>
-                    </div>
-                    <div class="rec-item">
-                        <div class="rec-label">推荐包码</div>
-                        <div class="rec-value" id="twoDefBao">-</div>
-                        <div class="rec-sub" id="twoDefBaoDesc">-</div>
-                    </div>
-                </div>
-            </div>
+            <!-- 推荐卡片 -->
+            <div class="results-grid" id="recCards"></div>
 
-            <div class="card">
-                <h2 class="card-title">三定推荐</h2>
-                <div class="recommendation">
-                    <div class="rec-item">
-                        <div class="rec-label">推荐单码</div>
-                        <div class="rec-value" id="threeDefSingle">-</div>
-                        <div class="rec-sub" id="threeDefSingleDesc">-</div>
-                    </div>
-                    <div class="rec-item">
-                        <div class="rec-label">推荐包码</div>
-                        <div class="rec-value" id="threeDefBao">-</div>
-                        <div class="rec-sub" id="threeDefBaoDesc">-</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2 class="card-title">四定推荐</h2>
-                <div class="recommendation">
-                    <div class="rec-item">
-                        <div class="rec-label">推荐单码</div>
-                        <div class="rec-value" id="fourDefSingle">-</div>
-                        <div class="rec-sub" id="fourDefSingleDesc">-</div>
-                    </div>
-                    <div class="rec-item">
-                        <div class="rec-label">推荐包码</div>
-                        <div class="rec-value" id="fourDefBao">-</div>
-                        <div class="rec-sub" id="fourDefBaoDesc">-</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2 class="card-title">现玩法推荐</h2>
-                <div class="recommendation">
-                    <div class="rec-item">
-                        <div class="rec-label">二现</div>
-                        <div class="rec-value" id="twoXian">-</div>
-                    </div>
-                    <div class="rec-item">
-                        <div class="rec-label">三现</div>
-                        <div class="rec-value" id="threeXian">-</div>
-                    </div>
-                    <div class="rec-item">
-                        <div class="rec-label">四现</div>
-                        <div class="rec-value" id="fourXian">-</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card budget-card">
+            <!-- 预算分配 -->
+            <div class="card span-2" id="budgetCard" style="display:none;">
                 <h2 class="card-title">预算分配方案</h2>
-                <div id="budgetSummary" style="margin-bottom: 1rem; color: var(--text-muted);">
-                    实际投注合计：<span class="highlight">-</span>
-                </div>
+                <div id="budgetSummary" style="margin-bottom: 1rem; color: var(--text-muted);"></div>
                 <div style="overflow-x: auto;">
                     <table class="budget-table">
                         <thead>
                             <tr>
-                                <th>玩法</th>
-                                <th>投注金额</th>
-                                <th>倍数×组合数</th>
-                                <th>命中概率</th>
-                                <th>若中可得</th>
-                                <th>净收益</th>
+                                <th>玩法</th><th>推荐组合</th><th>投注金额</th>
+                                <th>倍数×组合数</th><th>命中概率</th><th>若中可得</th><th>净收益</th>
                             </tr>
                         </thead>
-                        <tbody id="budgetTableBody">
-                        </tbody>
+                        <tbody id="budgetTableBody"></tbody>
                     </table>
                 </div>
             </div>
 
+            <!-- 评分明细 -->
+            <div class="card span-2" id="scoreCard" style="display:none;">
+                <h2 class="card-title">评分明细（仅参考）</h2>
+                <div id="scoreDetails" class="score-grid"></div>
+            </div>
+
+            <!-- 最近开奖 -->
+            <div class="card span-2" id="historyCard" style="display:none;">
+                <h2 class="card-title">最近10期开奖</h2>
+                <div id="historyList"></div>
+            </div>
+
             <div class="warning">
                 <span class="warning-icon">⚠️</span>
-                <div class="warning-text">
-                    <strong>温馨提示：</strong>本预测基于历史数据统计建模，仅供参考。彩票开奖本质随机，理性购彩，量力而行。
-                </div>
+                <div class="warning-text"><strong>温馨提示：</strong>本预测基于历史数据统计建模，仅供参考。彩票开奖本质随机，理性购彩，量力而行。</div>
             </div>
         </div>
-
-        <footer>
-            <p>排列五预测器 · 仅供娱乐参考</p>
-        </footer>
     </div>
 
-    <script>
-        // 模拟数据 - 实际使用时可替换为Python后端API
-        const mockData = {
-            latest: {
-                issue: '26127',
-                date: '2026-05-17',
-                nums: [9, 3, 6, 0, 3]
-            },
-            recommendations: {
-                "二定": {
-                    "单码": [["千位", 9], ["十位", 6]],
-                    "包码": [["千位", [9, 3, 0]], ["十位", [6, 0, 3]]]
-                },
-                "三定": {
-                    "单码": [["千位", 9], ["百位", 3], ["十位", 6]],
-                    "包码": [["千位", [9, 3, 0]], ["百位", [3, 6, 0]], ["十位", [6, 0, 3]]]
-                },
-                "四定": {
-                    "单码": [["千位", 9], ["百位", 3], ["十位", 6], ["个位", 0]],
-                    "包码": [["千位", [9, 3]], ["百位", [3, 6]], ["十位", [6, 0]], ["个位", [0, 3]]]
-                },
-                "二现": [9, 3],
-                "三现": [9, 3, 6],
-                "四现": [9, 3, 6, 0]
-            },
-            budgetPlans: {
-                "__total__": 99.8,
-                "__risk__": "平衡",
-                "二定包码": {
-                    "倍数": 5,
-                    "组合数": 9,
-                    "单份成本": 0.9,
-                    "实际投入": 4.5,
-                    "命中概率": 0.09,
-                    "单注赔付": 9.6,
-                    "中奖金额": 48.0,
-                    "净收益": 43.5
-                },
-                "三定包码": {
-                    "倍数": 3,
-                    "组合数": 27,
-                    "单份成本": 2.7,
-                    "实际投入": 8.1,
-                    "命中概率": 0.027,
-                    "单注赔付": 96.0,
-                    "中奖金额": 288.0,
-                    "净收益": 279.9
-                },
-                "四定包码": {
-                    "倍数": 2,
-                    "组合数": 16,
-                    "单份成本": 1.6,
-                    "实际投入": 3.2,
-                    "命中概率": 0.0016,
-                    "单注赔付": 960.0,
-                    "中奖金额": 1920.0,
-                    "净收益": 1916.8
-                },
-                "二现": {
-                    "倍数": 10,
-                    "组合数": 1,
-                    "单份成本": 1.0,
-                    "实际投入": 10.0,
-                    "命中概率": 0.0974,
-                    "单注赔付": 9.0,
-                    "中奖金额": 90.0,
-                    "净收益": 80.0
-                },
-                "三现": {
-                    "倍数": 25,
-                    "组合数": 1,
-                    "单份成本": 1.0,
-                    "实际投入": 25.0,
-                    "命中概率": 0.0204,
-                    "单注赔付": 45.0,
-                    "中奖金额": 1125.0,
-                    "净收益": 1100.0
-                },
-                "四现": {
-                    "倍数": 10,
-                    "组合数": 1,
-                    "单份成本": 1.0,
-                    "实际投入": 10.0,
-                    "命中概率": 0.0024,
-                    "单注赔付": 320.0,
-                    "中奖金额": 3200.0,
-                    "净收益": 3190.0
-                }
-            }
+    <!-- ==================== 回测面板 ==================== -->
+    <div class="tab-panel" id="panel-backtest">
+        <div class="control-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="btBudget">每期预算（元）</label>
+                    <input type="number" id="btBudget" class="input-field" value="100" min="0" step="1">
+                </div>
+                <div class="control-group">
+                    <label for="btRisk">风险偏好</label>
+                    <select id="btRisk" class="input-field">
+                        <option value="保守">保守</option>
+                        <option value="平衡" selected>平衡</option>
+                        <option value="激进">激进</option>
+                    </select>
+                </div>
+                <button class="btn btn-backtest" id="backtestBtn" onclick="doBacktest()">开始回测</button>
+            </div>
+            <div class="status-bar">
+                <div class="status-dot" id="btStatusDot"></div>
+                <span class="status-text" id="btStatusText">就绪 — 使用近100期数据，前50期训练/后50期测试</span>
+            </div>
+        </div>
+        <div class="results" id="backtestResults" style="display:none;">
+            <div class="card span-2">
+                <h2 class="card-title">总体收益对比</h2>
+                <div id="btSummary"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">各玩法命中率与 ROI</h2>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="btPlayStats"></table>
+                </div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">逐期明细（最近50期）</h2>
+                <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+                    <table class="data-table" id="btDetails"></table>
+                </div>
+            </div>
+            <div class="warning">
+                <span class="warning-icon">ℹ️</span>
+                <div class="warning-text">理论上排列五独立同分布，长期算法 vs 随机的命中率应趋同。50期波动较大属正常。</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 量化面板 ==================== -->
+    <div class="tab-panel" id="panel-quant">
+        <div class="control-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="quantPeriods">历史数据量</label>
+                    <select id="quantPeriods" class="input-field">
+                        <option value="500">500 期</option>
+                        <option value="1000">1000 期</option>
+                        <option value="2000" selected>2000 期</option>
+                        <option value="5000">5000 期</option>
+                        <option value="全部">全部</option>
+                    </select>
+                </div>
+                <button class="btn btn-quant" id="quantBtn" onclick="doQuant()">开始量化</button>
+            </div>
+            <div class="status-bar">
+                <div class="status-dot" id="quantStatusDot"></div>
+                <span class="status-text" id="quantStatusText">就绪 — 多因子权重学习 + 滚动回测，可能需要1-3分钟</span>
+            </div>
+        </div>
+        <div class="results" id="quantResults" style="display:none;">
+            <div class="card span-2">
+                <h2 class="card-title">回测指标</h2>
+                <div id="quantMetrics"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">因子权重（IC 学习）</h2>
+                <div id="quantFactors"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">最新推荐组合</h2>
+                <div id="quantRecs"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">各位置数字评分</h2>
+                <div id="quantScores" class="score-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer>排列五预测器 · 凌枯网络制作</footer>
+</div>
+
+<!-- ==================== 自定义策略配置弹窗 ==================== -->
+<div class="modal-overlay" id="configModal">
+    <div class="modal">
+        <h3>自定义策略配置</h3>
+
+        <div class="modal-section">
+            <h4>玩法选择（勾选要参与的玩法）</h4>
+            <div class="play-checks" id="modalPlayChecks"></div>
+        </div>
+
+        <div class="modal-section">
+            <h4>定位包码：每位取多少个数（0=不选这位，1-9=取算法 top-N）</h4>
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                    <tr><th style="width:80px;"></th><th style="width:60px;">千位</th><th style="width:60px;">百位</th><th style="width:60px;">十位</th><th style="width:60px;">个位</th></tr>
+                </thead>
+                <tbody id="modalBaoPos"></tbody>
+            </table>
+        </div>
+
+        <div class="modal-section">
+            <h4>现玩法手动指定数字（留空则用算法 top-N）</h4>
+            <div id="modalXianManual"></div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-sm" style="background:#bdc3c7;color:#333;" onclick="closeConfigModal()">取消</button>
+            <button class="btn btn-sm btn-predict" onclick="saveConfig()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+let customConfig = null;
+
+const PLAY_NAMES = ["二定单码","二定包码","三定单码","三定包码","四定单码","四定包码","二现","三现","四现"];
+const POS_NAMES = ["千位","百位","十位","个位"];
+const POS_ORDER = ["千位","百位","十位","个位"];
+
+// ============================================================
+// 工具函数
+// ============================================================
+function formatSingleBet(items) {
+    const m = {};
+    items.forEach(([pos, d]) => { m[pos] = d; });
+    return POS_ORDER.map(p => m[p] !== undefined ? m[p] : '*').join(' ');
+}
+
+function formatPlayDigits(play, rec) {
+    if (["二现","三现","四现"].includes(play)) {
+        return (rec[play] || []).join('');
+    }
+    const defName = play.substring(0, 2);
+    const kind = play.includes("单码") ? "单码" : "包码";
+    const data = rec[defName];
+    if (!data || !data[kind]) return '-';
+    const items = data[kind];
+    if (!items || items.length === 0) return '-';
+    const m = {};
+    items.forEach(([pos, ds]) => { m[pos] = ds; });
+    if (kind === "单码") {
+        return POS_ORDER.map(p => m[p] !== undefined ? m[p] : '*').join(' ');
+    }
+    return POS_ORDER.map(p => {
+        if (m[p] !== undefined) {
+            const arr = Array.isArray(m[p]) ? m[p] : [m[p]];
+            return arr.join('');
+        }
+        return '-';
+    }).join(' ');
+}
+
+// ============================================================
+// API 调用
+// ============================================================
+async function api(url, options = {}) {
+    const resp = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+}
+
+// ============================================================
+// 标签页切换
+// ============================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        document.getElementById('panel-' + this.dataset.tab).classList.add('active');
+    });
+});
+
+// ============================================================
+// 自定义策略
+// ============================================================
+async function loadConfig() {
+    try {
+        customConfig = await api('/api/config');
+    } catch (e) {
+        customConfig = {
+            enabled: ["二定包码","三定包码","二现","三现"],
+            bao_pos: { "二定": [0,3,0,3], "三定": [3,3,3,0], "四定": [2,2,2,2] },
+            xian_manual: {}, __active__: false
         };
+    }
+    document.getElementById('customEnabled').checked = customConfig.__active__ || false;
+    refreshCustomSummary();
+}
 
-        function updateStatus(text, isActive = false) {
-            document.getElementById('statusText').textContent = text;
-            const dot = document.getElementById('statusDot');
-            if (isActive) {
-                dot.classList.add('active');
-            } else {
-                dot.classList.remove('active');
+function toggleCustom() {
+    customConfig.__active__ = document.getElementById('customEnabled').checked;
+    refreshCustomSummary();
+}
+
+function refreshCustomSummary() {
+    const el = document.getElementById('customSummary');
+    const en = customConfig?.enabled || [];
+    if (!en.length) {
+        el.textContent = '（未勾选任何玩法）';
+    } else {
+        el.textContent = '已选: ' + en.join(' / ') + '（共 ' + en.length + ' 项）';
+    }
+}
+
+async function openConfigModal() {
+    if (!customConfig) await loadConfig();
+    const cfg = customConfig;
+
+    // 玩法选择
+    let html = '';
+    for (const name of PLAY_NAMES) {
+        const checked = (cfg.enabled || []).includes(name) ? ' checked' : '';
+        html += `<label><input type="checkbox" value="${name}"${checked}> ${name}</label>`;
+    }
+    document.getElementById('modalPlayChecks').innerHTML = html;
+
+    // 包码配置
+    html = '';
+    for (const defName of ["二定","三定","四定"]) {
+        const counts = (cfg.bao_pos || {})[defName] || [0,0,0,0];
+        html += '<tr><td style="color:var(--text);padding:4px 0;">' + defName + '包码</td>';
+        for (let c = 0; c < 4; c++) {
+            let opts = '';
+            for (let i = 0; i <= 9; i++) {
+                opts += `<option value="${i}"${counts[c] === i ? ' selected' : ''}>${i}</option>`;
             }
+            html += `<td><select class="bao-pos" data-def="${defName}" data-pos="${c}">${opts}</select></td>`;
+        }
+        html += '</tr>';
+    }
+    document.getElementById('modalBaoPos').innerHTML = html;
+
+    // 现玩法手动指定
+    html = '';
+    for (const [name, n] of [["二现",2],["三现",3],["四现",4]]) {
+        const cur = (cfg.xian_manual || {})[name] || [];
+        html += `<div class="modal-row">
+            <label>${name}（${n}个，空格分隔）</label>
+            <input type="text" class="xian-input" data-name="${name}" value="${cur.join(' ')}" placeholder="留空=算法推荐">
+        </div>`;
+    }
+    document.getElementById('modalXianManual').innerHTML = html;
+
+    document.getElementById('configModal').classList.add('show');
+}
+
+function closeConfigModal() {
+    document.getElementById('configModal').classList.remove('show');
+}
+
+async function saveConfig() {
+    // 读取玩法选择
+    const checks = document.querySelectorAll('#modalPlayChecks input[type="checkbox"]');
+    const enabled = [];
+    checks.forEach(cb => { if (cb.checked) enabled.push(cb.value); });
+
+    // 读取包码配置
+    const baoPos = { "二定": [0,0,0,0], "三定": [0,0,0,0], "四定": [0,0,0,0] };
+    document.querySelectorAll('.bao-pos').forEach(sel => {
+        baoPos[sel.dataset.def][parseInt(sel.dataset.pos)] = parseInt(sel.value);
+    });
+
+    // 读取现玩法
+    const xianManual = {};
+    document.querySelectorAll('.xian-input').forEach(inp => {
+        const raw = inp.value.trim();
+        if (raw) {
+            const parts = raw.replace(/,/g, ' ').split(/\s+/).map(Number);
+            xianManual[inp.dataset.name] = parts;
+        }
+    });
+
+    customConfig = {
+        enabled: enabled,
+        bao_pos: baoPos,
+        xian_manual: xianManual,
+        __active__: true
+    };
+
+    try {
+        await api('/api/config', {
+            method: 'POST',
+            body: JSON.stringify(customConfig)
+        });
+    } catch (e) {
+        console.error('保存配置失败:', e);
+    }
+
+    document.getElementById('customEnabled').checked = true;
+    refreshCustomSummary();
+    closeConfigModal();
+}
+
+// ============================================================
+// 预测
+// ============================================================
+async function doPredict() {
+    const btn = document.getElementById('predictBtn');
+    const budget = parseFloat(document.getElementById('budget').value) || 0;
+
+    btn.disabled = true; btn.textContent = '分析中...';
+    setPredictStatus('正在获取最新开奖数据并分析...', 'active');
+
+    try {
+        const body = {
+            budget: budget,
+            risk: document.getElementById('risk').value,
+            use_custom: document.getElementById('customEnabled').checked,
+        };
+        if (body.use_custom) {
+            if (!customConfig) await loadConfig();
+            body.custom_config = customConfig;
         }
 
-        function formatSingleBet(items) {
-            const order = ['千位', '百位', '十位', '个位'];
-            const m = {};
-            items.forEach(([pos, d]) => m[pos] = d);
-            return order.map(p => m[p] !== undefined ? m[p] : '*').join(' ');
-        }
-
-        function render(data) {
-            // 最新开奖
-            const latest = data.latest;
-            document.getElementById('drawInfo').textContent = 
-                `第 ${latest.issue} 期 （${latest.date}）`;
-            
-            const numsHtml = latest.nums.map((n, i) => 
-                `<div class="number-ball ${i === 4 ? 'special' : ''}">${n}</div>`
-            ).join('');
-            document.getElementById('drawNumbers').innerHTML = numsHtml;
-
-            // 推荐
-            const rec = data.recommendations;
-            
-            // 二定
-            const twoDefSingle = rec['二定']['单码'].map(([p, d]) => `${p}=${d}`).join(' | ');
-            document.getElementById('twoDefSingle').textContent = formatSingleBet(rec['二定']['单码']);
-            document.getElementById('twoDefSingleDesc').textContent = twoDefSingle;
-            
-            const twoDefBaoParts = rec['二定']['包码'].map(([p, ds]) => 
-                `${p}∈{${ds.join(',')}}`
-            ).join(' , ');
-            const twoDefCombos = rec['二定']['包码'].reduce((acc, [, ds]) => acc * ds.length, 1);
-            document.getElementById('twoDefBao').textContent = twoDefBaoParts;
-            document.getElementById('twoDefBaoDesc').textContent = `共 ${twoDefCombos} 注`;
-
-            // 三定
-            const threeDefSingle = rec['三定']['单码'].map(([p, d]) => `${p}=${d}`).join(' | ');
-            document.getElementById('threeDefSingle').textContent = formatSingleBet(rec['三定']['单码']);
-            document.getElementById('threeDefSingleDesc').textContent = threeDefSingle;
-            
-            const threeDefBaoParts = rec['三定']['包码'].map(([p, ds]) => 
-                `${p}∈{${ds.join(',')}}`
-            ).join(' , ');
-            const threeDefCombos = rec['三定']['包码'].reduce((acc, [, ds]) => acc * ds.length, 1);
-            document.getElementById('threeDefBao').textContent = threeDefBaoParts;
-            document.getElementById('threeDefBaoDesc').textContent = `共 ${threeDefCombos} 注`;
-
-            // 四定
-            const fourDefSingle = rec['四定']['单码'].map(([p, d]) => `${p}=${d}`).join(' | ');
-            document.getElementById('fourDefSingle').textContent = formatSingleBet(rec['四定']['单码']);
-            document.getElementById('fourDefSingleDesc').textContent = fourDefSingle;
-            
-            const fourDefBaoParts = rec['四定']['包码'].map(([p, ds]) => 
-                `${p}∈{${ds.join(',')}}`
-            ).join(' , ');
-            const fourDefCombos = rec['四定']['包码'].reduce((acc, [, ds]) => acc * ds.length, 1);
-            document.getElementById('fourDefBao').textContent = fourDefBaoParts;
-            document.getElementById('fourDefBaoDesc').textContent = `共 ${fourDefCombos} 注`;
-
-            // 现玩法
-            document.getElementById('twoXian').textContent = rec['二现'].join(' ');
-            document.getElementById('threeXian').textContent = rec['三现'].join(' ');
-            document.getElementById('fourXian').textContent = rec['四现'].join(' ');
-
-            // 预算
-            const budget = data.budgetPlans;
-            const inputBudget = parseFloat(document.getElementById('budget').value);
-            document.getElementById('budgetSummary').innerHTML = 
-                `实际投注合计：<span class="highlight">¥${budget['__total__'].toFixed(2)}</span>` +
-                (inputBudget > budget['__total__'] ? 
-                    `（剩余 ¥${(inputBudget - budget['__total__']).toFixed(2)}）` : '');
-
-            const order = ['二定包码', '三定包码', '四定包码', '二现', '三现', '四现'];
-            const tbody = document.getElementById('budgetTableBody');
-            tbody.innerHTML = '';
-            
-            order.forEach(play => {
-                if (!budget[play]) return;
-                const p = budget[play];
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${play}</td>
-                    <td class="highlight">¥${p['实际投入'].toFixed(2)}</td>
-                    <td>${p['倍数']}×${p['组合数']}</td>
-                    <td>${(p['命中概率'] * 100).toFixed(3)}%</td>
-                    <td class="highlight">¥${p['中奖金额'].toFixed(2)}</td>
-                    <td class="${p['净收益'] >= 0 ? 'success' : ''}">¥${p['净收益'] >= 0 ? '+' : ''}${p['净收益'].toFixed(2)}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            // 显示结果
-            document.getElementById('results').classList.add('visible');
-        }
-
-        document.getElementById('predictBtn').addEventListener('click', async function() {
-            const btn = this;
-            btn.disabled = true;
-            btn.textContent = '分析中...';
-            
-            updateStatus('正在获取最新开奖数据...', true);
-            
-            // 模拟加载
-            await new Promise(resolve => setTimeout(resolve, 500));
-            updateStatus('正在分析历史数据...', true);
-            
-            await new Promise(resolve => setTimeout(resolve, 800));
-            updateStatus('正在生成预测方案...', true);
-            
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // 使用模拟数据
-            render(mockData);
-            
-            updateStatus('完成 — 已完成分析预测', true);
-            btn.disabled = false;
-            btn.textContent = '重新预测';
+        const data = await api('/api/predict', {
+            method: 'POST',
+            body: JSON.stringify(body)
         });
 
-        // 初始渲染
-        render(mockData);
-    </script>
+        renderPredict(data);
+        const mode = body.use_custom ? '自定义模式' : '标准模式';
+        setPredictStatus('完成 — ' + mode + ' (' + data.recent_history.length + ' 期数据)', 'active');
+    } catch (e) {
+        setPredictStatus('失败：' + e.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = '重新预测';
+    }
+}
+
+function setPredictStatus(msg, state) {
+    document.getElementById('predictStatusText').textContent = msg;
+    const dot = document.getElementById('predictStatusDot');
+    dot.className = 'status-dot ' + (state === 'active' ? 'active' : state === 'error' ? 'error' : '');
+}
+
+function renderPredict(data) {
+    document.getElementById('predictResults').style.display = 'block';
+
+    // 最新开奖
+    const latest = data.latest;
+    document.getElementById('drawInfo').textContent =
+        '第 ' + latest.issue + ' 期 （' + latest.date + '）';
+    document.getElementById('drawNumbers').innerHTML = latest.nums.map((n, i) =>
+        `<div class="number-ball ${i === 4 ? 'special' : ''}">${n}</div>`
+    ).join('');
+
+    // 推荐卡片
+    const rec = data.recommendations;
+    let cardsHtml = '';
+
+    for (const defName of ["二定","三定","四定"]) {
+        const d = rec[defName] || {};
+        const single = d["单码"] || [];
+        const bao = d["包码"] || [];
+
+        let singleHtml = '', baoHtml = '';
+        if (single.length > 0) {
+            const val = formatSingleBet(single);
+            const desc = single.map(([p, d]) => `${p}=${d}`).join(' | ');
+            singleHtml = `<div class="rec-item"><div class="rec-label">推荐单码</div><div class="rec-value">${val}</div><div class="rec-sub">${desc}</div></div>`;
+        }
+        if (bao.length > 0) {
+            const parts = bao.map(([p, ds]) => {
+                const arr = Array.isArray(ds) ? ds : [ds];
+                return `${p}∈{${arr.join(',')}}`;
+            }).join(' , ');
+            const combos = bao.reduce((acc, [, ds]) => {
+                const arr = Array.isArray(ds) ? ds : [ds];
+                return acc * arr.length;
+            }, 1);
+            baoHtml = `<div class="rec-item"><div class="rec-label">推荐包码</div><div class="rec-value">${parts}</div><div class="rec-sub">共 ${combos} 注</div></div>`;
+        }
+
+        cardsHtml += `<div class="card"><h2 class="card-title">${defName}推荐</h2><div class="recommendation">${singleHtml}${baoHtml}</div></div>`;
+    }
+
+    // 现玩法
+    const xianNames = {"二现":2,"三现":3,"四现":4};
+    let xianHtml = '';
+    for (const [name, count] of Object.entries(xianNames)) {
+        const digits = rec[name] || [];
+        if (digits.length > 0) {
+            xianHtml += `<div class="rec-item"><div class="rec-label">${name}</div><div class="rec-value">${digits.join(' ')}</div><div class="rec-sub">即买入 {${digits.join(',')}}，开奖出现这 ${count} 个数字即中</div></div>`;
+        }
+    }
+    cardsHtml += `<div class="card"><h2 class="card-title">现玩法推荐</h2><div class="recommendation">${xianHtml}</div></div>`;
+
+    document.getElementById('recCards').innerHTML = cardsHtml;
+
+    // 预算分配
+    const plans = data.budget_plans;
+    const budgetTotal = plans.__total__ || 0;
+    const inputBudget = parseFloat(document.getElementById('budget').value) || 0;
+    const budgetCard = document.getElementById('budgetCard');
+
+    if (budgetTotal > 0) {
+        budgetCard.style.display = '';
+        const risk = plans.__risk__ || '';
+        document.getElementById('budgetSummary').innerHTML =
+            '实际投注合计：<span class="highlight">¥' + budgetTotal.toFixed(2) + '</span>' +
+            ' 风险偏好：' + risk +
+            (inputBudget > budgetTotal ? '（剩余 ¥' + (inputBudget - budgetTotal).toFixed(2) + '，因最小注金限制无法整除）' : '');
+
+        const order = ["二定单码","二定包码","三定单码","三定包码","四定单码","四定包码","二现","三现","四现"];
+        let tbody = '';
+        for (const play of order) {
+            if (!plans[play] && !(risk === '自定义')) continue;
+            const p = plans[play] || { 实际投入: 0, 倍数: 0, 组合数: 0, 命中概率: 0, 中奖金额: 0, 净收益: 0 };
+            const digits = formatPlayDigits(play, rec);
+            tbody += `<tr>
+                <td>${play}</td>
+                <td style="font-family:Consolas,monospace;">${digits}</td>
+                <td class="highlight">¥${(p['实际投入'] || 0).toFixed(2)}</td>
+                <td>${p['倍数'] || 0}×${p['组合数'] || 0}</td>
+                <td>${((p['命中概率'] || 0) * 100).toFixed(3)}%</td>
+                <td class="highlight">¥${(p['中奖金额'] || 0).toFixed(2)}</td>
+                <td class="${(p['净收益'] || 0) >= 0 ? 'success' : ''}">¥${(p['净收益'] || 0) >= 0 ? '+' : ''}${(p['净收益'] || 0).toFixed(2)}</td>
+            </tr>`;
+        }
+        document.getElementById('budgetTableBody').innerHTML = tbody;
+    } else {
+        budgetCard.style.display = 'none';
+    }
+
+    // 评分明细
+    const scoreCard = document.getElementById('scoreCard');
+    if (data.pos_scores && data.digit_scores) {
+        scoreCard.style.display = '';
+        let scoreHtml = '<div style="margin-bottom:0.75rem;color:var(--text-muted);">各位置 0-9 综合评分（分越高推荐度越高）</div>';
+        scoreHtml += '<div>位置  ' + Array.from({length:10}, (_,i) => '<span> ' + i + ' </span>').join('') + '</div>';
+        for (let pos = 0; pos < 4; pos++) {
+            const row = data.pos_scores[pos];
+            scoreHtml += '<div>' + POS_NAMES[pos] + '  ' + row.map(v => '<span>' + v.toFixed(2) + '</span>').join('') + '</div>';
+        }
+        scoreHtml += '<div style="margin-top:1rem;margin-bottom:0.5rem;color:var(--text-muted);">全局数字评分（用于现玩法）</div>';
+        scoreHtml += '<div>数字  ' + Array.from({length:10}, (_,i) => '<span> ' + i + ' </span>').join('') + '</div>';
+        scoreHtml += '<div>评分  ' + data.digit_scores.map(v => '<span>' + v.toFixed(2) + '</span>').join('') + '</div>';
+        document.getElementById('scoreDetails').innerHTML = scoreHtml;
+    } else {
+        scoreCard.style.display = 'none';
+    }
+
+    // 最近10期
+    const historyCard = document.getElementById('historyCard');
+    if (data.recent_history && data.recent_history.length > 0) {
+        historyCard.style.display = '';
+        let histHtml = '';
+        for (const h of data.recent_history) {
+            const nums = h.nums.slice(0, 4).join('');
+            histHtml += '<div style="margin-bottom:0.25rem;font-family:Consolas,monospace;">' +
+                h.issue + ' (' + h.date + ')  ' + nums +
+                ' <span class="dim">[后位' + h.nums[4] + ']</span></div>';
+        }
+        document.getElementById('historyList').innerHTML = histHtml;
+    } else {
+        historyCard.style.display = 'none';
+    }
+}
+
+// ============================================================
+// 回测
+// ============================================================
+async function doBacktest() {
+    const btn = document.getElementById('backtestBtn');
+    const budget = parseFloat(document.getElementById('btBudget').value) || 0;
+
+    btn.disabled = true; btn.textContent = '回测中...';
+    setBtStatus('正在爬取100期数据并滚动回测...', 'active');
+
+    try {
+        const data = await api('/api/backtest', {
+            method: 'POST',
+            body: JSON.stringify({
+                budget: budget,
+                risk: document.getElementById('btRisk').value
+            })
+        });
+        renderBacktest(data);
+        setBtStatus('回测完成 — ' + data.n_test + ' 期测试', 'active');
+    } catch (e) {
+        setBtStatus('失败：' + e.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = '重新回测';
+    }
+}
+
+function setBtStatus(msg, state) {
+    document.getElementById('btStatusText').textContent = msg;
+    const dot = document.getElementById('btStatusDot');
+    dot.className = 'status-dot ' + (state === 'active' ? 'active' : state === 'error' ? 'error' : '');
+}
+
+function renderBacktest(data) {
+    document.getElementById('backtestResults').style.display = 'block';
+    const t = data.totals;
+
+    // 总体收益
+    let html = '<div style="margin-bottom:0.5rem;color:var(--text-muted);">';
+    html += '训练窗口：' + data.train_window + ' 期 &nbsp; 每期预算：¥' + data.budget.toFixed(2);
+    html += ' &nbsp; 风险偏好：' + data.risk + '</div>';
+
+    html += '<table class="data-table"><thead><tr>';
+    html += '<th>策略</th><th>总投入</th><th>总回报</th><th>净收益</th><th>ROI</th></tr></thead><tbody>';
+
+    for (const [label, prefix] of [['算法选号','algo'],['随机选号','random']]) {
+        html += '<tr>';
+        html += '<td>' + label + '</td>';
+        html += '<td>¥' + t[prefix + '_cost'].toFixed(2) + '</td>';
+        html += '<td>¥' + t[prefix + '_payout'].toFixed(2) + '</td>';
+        html += '<td style="color:' + (t[prefix + '_net'] >= 0 ? 'var(--success)' : 'var(--primary)') + '">¥' + (t[prefix + '_net'] >= 0 ? '+' : '') + t[prefix + '_net'].toFixed(2) + '</td>';
+        html += '<td>' + (t[prefix + '_roi'] * 100).toFixed(2) + '%</td>';
+        html += '</tr>';
+    }
+
+    const diffNet = t.algo_net - t.random_net;
+    const diffRoi = t.algo_roi - t.random_roi;
+    html += '</tbody></table>';
+    html += '<div style="margin-top:0.75rem;color:' + (diffNet > 0 ? 'var(--success)' : 'var(--text-muted)') + ';">';
+    html += '算法相对随机：净收益差 ¥' + (diffNet >= 0 ? '+' : '') + diffNet.toFixed(2);
+    html += '，ROI 差 ' + (diffRoi >= 0 ? '+' : '') + (diffRoi * 100).toFixed(2) + ' 个百分点</div>';
+    document.getElementById('btSummary').innerHTML = html;
+
+    // 各玩法
+    const theoretical = {
+        "二定单码": 1.0, "三定单码": 0.1, "四定单码": 0.01,
+        "二定包码": 9.0, "三定包码": 2.7, "四定包码": 0.16,
+        "二现": 9.74, "三现": 2.04, "四现": 0.24,
+    };
+    let psHtml = '<thead><tr><th>玩法</th><th>算法命中</th><th>算法ROI</th><th>随机命中</th><th>随机ROI</th><th>理论命中</th></tr></thead><tbody>';
+    for (const play of PLAY_NAMES) {
+        const s = data.play_stats[play];
+        if (!s || (!s.algo_bets && !s.random_bets)) continue;
+        psHtml += '<tr>';
+        psHtml += '<td>' + play + '</td>';
+        psHtml += '<td>' + s.algo_hits + '/' + s.algo_bets + '=' + (s.algo_hit_rate * 100).toFixed(1) + '%</td>';
+        psHtml += '<td>' + (s.algo_roi * 100).toFixed(2) + '%</td>';
+        psHtml += '<td>' + s.random_hits + '/' + s.random_bets + '=' + (s.random_hit_rate * 100).toFixed(1) + '%</td>';
+        psHtml += '<td>' + (s.random_roi * 100).toFixed(2) + '%</td>';
+        psHtml += '<td>' + (theoretical[play] || 0).toFixed(2) + '%</td>';
+        psHtml += '</tr>';
+    }
+    psHtml += '</tbody>';
+    document.getElementById('btPlayStats').innerHTML = psHtml;
+
+    // 逐期明细
+    let detHtml = '<thead><tr><th>期号</th><th>开奖</th><th>算法投入</th><th>算法回报</th><th>随机投入</th><th>随机回报</th></tr></thead><tbody>';
+    for (const d of data.details) {
+        const isWin = d.algo_payout > d.algo_cost;
+        detHtml += '<tr style="' + (isWin ? 'color:var(--success);' : '') + '">';
+        detHtml += '<td>' + d.issue + '</td><td>' + d.actual + '</td>';
+        detHtml += '<td>¥' + d.algo_cost.toFixed(2) + '</td>';
+        detHtml += '<td>¥' + d.algo_payout.toFixed(2) + '</td>';
+        detHtml += '<td>¥' + d.random_cost.toFixed(2) + '</td>';
+        detHtml += '<td>¥' + d.random_payout.toFixed(2) + '</td>';
+        detHtml += '</tr>';
+    }
+    detHtml += '</tbody>';
+    document.getElementById('btDetails').innerHTML = detHtml;
+}
+
+// ============================================================
+// 量化
+// ============================================================
+let quantPollTimer = null;
+
+async function doQuant() {
+    const btn = document.getElementById('quantBtn');
+    const periods = document.getElementById('quantPeriods').value;
+
+    btn.disabled = true; btn.textContent = '计算中...';
+    setQuantStatus('正在加载数据 → 学习因子权重 → 滚动回测...（可能需要1-3分钟）', 'active');
+    document.getElementById('quantResults').style.display = 'none';
+
+    try {
+        const resp = await api('/api/quant', {
+            method: 'POST',
+            body: JSON.stringify({ periods: periods === '全部' ? 0 : parseInt(periods) })
+        });
+
+        if (resp.status === 'running') {
+            // 轮询等待结果
+            setQuantStatus('量化计算中...', 'active');
+            pollQuantResult(resp.job_id, btn);
+        } else if (resp.status === 'done') {
+            renderQuant(resp.result);
+            setQuantStatus('量化完成', 'active');
+            btn.disabled = false; btn.textContent = '重新量化';
+        }
+    } catch (e) {
+        setQuantStatus('失败：' + e.message, 'error');
+        btn.disabled = false; btn.textContent = '重新量化';
+    }
+}
+
+function pollQuantResult(jobId, btn) {
+    if (quantPollTimer) clearTimeout(quantPollTimer);
+
+    async function poll() {
+        try {
+            const resp = await api('/api/quant/' + jobId);
+            if (resp.status === 'done') {
+                document.getElementById('quantResults').style.display = 'block';
+                renderQuant(resp.result);
+                setQuantStatus('量化完成', 'active');
+                btn.disabled = false; btn.textContent = '重新量化';
+            } else if (resp.status === 'error') {
+                setQuantStatus('量化失败：' + (resp.error || '未知错误'), 'error');
+                btn.disabled = false; btn.textContent = '重新量化';
+            } else {
+                setQuantStatus('量化计算中...（轮询中）', 'active');
+                quantPollTimer = setTimeout(poll, 3000);
+            }
+        } catch (e) {
+            setQuantStatus('轮询失败：' + e.message, 'error');
+            btn.disabled = false; btn.textContent = '重新量化';
+        }
+    }
+    poll();
+}
+
+function setQuantStatus(msg, state) {
+    document.getElementById('quantStatusText').textContent = msg;
+    const dot = document.getElementById('quantStatusDot');
+    dot.className = 'status-dot ' + (state === 'active' ? 'active' : state === 'error' ? 'error' : '');
+}
+
+function renderQuant(data) {
+    document.getElementById('quantResults').style.display = 'block';
+    const meta = data.meta || {};
+    const bt = data['回测报告'] || {};
+    const fw = data['因子权重'] || {};
+    const rec = data['预测推荐'] || {};
+
+    // 回测指标
+    let metricsHtml = '<div style="margin-bottom:0.75rem;color:var(--text-muted);font-size:0.85rem;">';
+    metricsHtml += '训练窗口：' + (meta.train_window || '?') + ' 期 &nbsp; ';
+    metricsHtml += '测试期数：' + (meta.test_periods || '?') + ' &nbsp; ';
+    metricsHtml += '每期预算：¥' + (meta.budget || '?') + '</div>';
+
+    const metrics = [
+        ['测试期数', bt.n_test || 0, ''],
+        ['总投入', '¥' + (bt.total_cost || 0).toFixed(2), ''],
+        ['总回报', '¥' + (bt.total_payout || 0).toFixed(2), ''],
+        ['净收益', '¥' + ((bt.net || 0) >= 0 ? '+' : '') + (bt.net || 0).toFixed(2), bt.net > 0 ? 'var(--success)' : 'var(--text-muted)'],
+        ['ROI', ((bt.roi || 0) * 100).toFixed(2) + '%', ''],
+        ['Sharpe', (bt.sharpe || 0).toFixed(4), ''],
+        ['Calmar', (bt.calmar || 0).toFixed(4), ''],
+        ['最大回撤', '¥' + (bt.max_drawdown || 0).toFixed(2), ''],
+        ['盈亏比', (bt.profit_factor || 0).toFixed(4), ''],
+        ['胜率', ((bt.win_rate || 0) * 100).toFixed(2) + '%', ''],
+    ];
+    metricsHtml += '<table class="data-table" style="max-width:500px;"><tbody>';
+    for (const [name, val, color] of metrics) {
+        metricsHtml += '<tr><td style="color:var(--text-muted);">' + name + '</td><td style="' + (color ? 'color:' + color + ';' : '') + '">' + val + '</td></tr>';
+    }
+    metricsHtml += '</tbody></table>';
+
+    const diff = bt.algo_vs_random_net_diff || 0;
+    metricsHtml += '<div style="margin-top:0.5rem;color:' + (diff > 0 ? 'var(--success)' : 'var(--text-muted)') + ';">算法相对随机基准净收益差：¥' + (diff >= 0 ? '+' : '') + diff.toFixed(2) + '</div>';
+    document.getElementById('quantMetrics').innerHTML = metricsHtml;
+
+    // 因子权重
+    let factorHtml = '';
+    const sortedFactors = Object.entries(fw).sort((a, b) => b[1].weight - a[1].weight);
+    for (const [name, info] of sortedFactors) {
+        factorHtml += '<div class="factor-bar">';
+        factorHtml += '<span class="factor-name">' + name + '</span>';
+        factorHtml += '<div class="factor-bar-inner"><div class="factor-bar-fill" style="width:' + (info.weight * 100) + '%;"></div></div>';
+        factorHtml += '<span class="factor-val">' + info.weight.toFixed(4) + '</span>';
+        factorHtml += '</div>';
+    }
+    document.getElementById('quantFactors').innerHTML = factorHtml;
+
+    // 推荐组合
+    let recHtml = '';
+    for (const playName of ["二定","三定","四定"]) {
+        const d = rec[playName];
+        if (!d) continue;
+        const single = (d['单码'] || []).map(([p, d]) => p + '=' + d).join(' | ');
+        const baoParts = (d['包码'] || []).map(([p, ds]) => p + '∈{' + ds.join(',') + '}').join(' , ');
+        let nCombo = 1;
+        (d['包码'] || []).forEach(([, ds]) => { nCombo *= ds.length; });
+        recHtml += '<div style="margin-bottom:0.75rem;"><strong>' + playName + '</strong></div>';
+        recHtml += '<div style="margin-left:1rem;margin-bottom:0.5rem;">单码：' + formatSingleBet(single ? (d['单码'] || []) : []) + ' &nbsp; <span class="dim">' + single + '</span></div>';
+        recHtml += '<div style="margin-left:1rem;">包码：' + baoParts + ' &nbsp; <span class="dim">共 ' + nCombo + ' 注 = ¥' + (nCombo * 0.1).toFixed(2) + '</span></div>';
+    }
+    for (const playName of ["二现","三现","四现"]) {
+        const digits = rec[playName] || [];
+        if (digits.length === 0) continue;
+        recHtml += '<div style="margin-top:0.5rem;"><strong>' + playName + '：</strong>';
+        recHtml += '<span style="font-family:Orbitron,sans-serif;color:var(--accent);font-size:1.2rem;"> ' + digits.join(' ') + '</span>';
+        recHtml += ' <span class="dim">即买入 {' + digits.join(',') + '}</span></div>';
+    }
+    document.getElementById('quantRecs').innerHTML = recHtml;
+
+    // 位置评分
+    const posScores = data['位置评分'] || [];
+    if (posScores.length > 0) {
+        let scoreHtml = '<div>位置  ' + Array.from({length:10}, (_,i) => '<span> ' + i + ' </span>').join('') + '</div>';
+        for (let pos = 0; pos < 4; pos++) {
+            const row = posScores[pos];
+            scoreHtml += '<div>' + POS_NAMES[pos] + '  ' + row.map(v => '<span>' + v.toFixed(2) + '</span>').join('') + '</div>';
+        }
+        document.getElementById('quantScores').innerHTML = scoreHtml;
+    } else {
+        document.getElementById('quantScores').innerHTML = '<span class="dim">无评分数据</span>';
+    }
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+loadConfig();
+
+// 点击弹窗外部关闭
+document.getElementById('configModal').addEventListener('click', function(e) {
+    if (e.target === this) closeConfigModal();
+});
+</script>
 </body>
 </html>

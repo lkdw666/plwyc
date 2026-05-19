@@ -1,9 +1,8 @@
 __pycache__/
 .claude/
-*.pyc
-.claude/
 .idea/
-__pycache__/
 *.pyc
 *.iml
 *.xml
+quant_output.json
+custom_config.json

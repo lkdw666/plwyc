@@ -13,9 +13,12 @@
 ├── quant.py              # 量化分析引擎（多因子权重学习 + 回测指标）
 ├── sync_data.py          # 数据同步脚本（全量/增量拉取 zhcw.com 开奖数据）
 ├── custom_config.json    # 用户自定义策略配置文件
-├── quant_output.json     # 量化分析输出结果
+├── quant_output.json     # 量化分析输出结果（自动生成，不纳入版本控制）
 ├── app.ico               # 程序图标
-├── 运行.bat              # 一键启动 predictor.py
+├── web/                  # Web 前端界面
+│   ├── server.py         # Flask 后端服务
+│   └── index.html        # 前端页面
+├── 运行.bat              # 一键启动 predictor.py（GUI）
 ├── 每日同步.bat           # 每日增量同步数据
 ├── setup_task.ps1         # Windows 计划任务配置（每日 22:00 自动同步）
 └── README.md
@@ -102,6 +105,24 @@ python predictor.py
 - 可选：勾选「启用自定义策略」→ 点击「配置...」个性化设置
 - 点击 **回测** 查看算法 vs 随机的滚动回测对比
 - 选择数据量后点击 **量化** 运行多因子权重学习与量化报告
+
+---
+
+## Web 界面（web/）
+
+### 启动
+```bash
+cd web
+pip install flask   # 若未安装
+python server.py    # 启动后端服务
+```
+浏览器访问 http://localhost:5173
+
+### 功能
+- **预测**标签页：与 GUI 完全一致的预测功能，含自定义策略、评分明细、近10期历史
+- **回测**标签页：滚动回测，对比算法 vs 随机选号
+- **量化**标签页：异步执行多因子权重学习，轮询获取结果，展示回测指标、因子权重、推荐组合
+- 所有数据均来自 zhcw.com 实时爬取或 MySQL 数据库，不使用模拟数据
 
 ---
 
