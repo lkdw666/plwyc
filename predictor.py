@@ -403,7 +403,7 @@ def make_recommendations(predictor: Predictor):
     two_def_positions = sorted([pos_strength[0][0], pos_strength[1][0]])
     rec["二定"] = {
         "单码": [(pos_names[p], best_digit_each_pos[p]) for p in two_def_positions],
-        "包码": [(pos_names[p], _select_dynamic(pos_scores[p], 3, 6, 0.55))
+        "包码": [(pos_names[p], sorted(_select_dynamic(pos_scores[p], 3, 6, 0.55)))
                  for p in two_def_positions],
     }
 
@@ -411,21 +411,21 @@ def make_recommendations(predictor: Predictor):
     three_def_positions = sorted([pos_strength[i][0] for i in range(3)])
     rec["三定"] = {
         "单码": [(pos_names[p], best_digit_each_pos[p]) for p in three_def_positions],
-        "包码": [(pos_names[p], _select_dynamic(pos_scores[p], 3, 6, 0.55))
+        "包码": [(pos_names[p], sorted(_select_dynamic(pos_scores[p], 3, 6, 0.55)))
                  for p in three_def_positions],
     }
 
     # —— 四定：4 个位置全占（成本对位置数敏感，阈值更严、上限更低）
     rec["四定"] = {
         "单码": [(pos_names[p], best_digit_each_pos[p]) for p in range(4)],
-        "包码": [(pos_names[p], _select_dynamic(pos_scores[p], 2, 4, 0.6))
+        "包码": [(pos_names[p], sorted(_select_dynamic(pos_scores[p], 2, 4, 0.6)))
                  for p in range(4)],
     }
 
-    # —— 现玩法：取全局 top N 个不同数字
-    rec["二现"] = digit_ranked[:2]
-    rec["三现"] = digit_ranked[:3]
-    rec["四现"] = digit_ranked[:4]
+    # —— 现玩法：取全局 top N 个不同数字，从小到大排列
+    rec["二现"] = sorted(digit_ranked[:2])
+    rec["三现"] = sorted(digit_ranked[:3])
+    rec["四现"] = sorted(digit_ranked[:4])
 
     return rec, pos_scores, digit_scores
 
@@ -461,9 +461,9 @@ def make_custom_recommendations(predictor: Predictor, config: dict):
         counts = bao_pos.get(name, [0, 0, 0, 0])
         user_active = [p for p in range(4) if counts[p] > 0]
 
-        # 包码：用用户配置的活跃位置
+        # 包码：用用户配置的活跃位置，数字从小到大排列
         rec[name] = {
-            "包码": [(pos_names[p], top_per_pos[p][:counts[p]]) for p in user_active],
+            "包码": [(pos_names[p], sorted(top_per_pos[p][:counts[p]])) for p in user_active],
         }
 
     # 单码：按整体位置强度选 top-N 个位置（不受 bao_pos 影响）
@@ -479,9 +479,9 @@ def make_custom_recommendations(predictor: Predictor, config: dict):
     for name, default_n in [("二现", 2), ("三现", 3), ("四现", 4)]:
         manual = xian_manual.get(name)
         if manual and len(manual) == default_n:
-            rec[name] = list(manual)
+            rec[name] = sorted(manual)
         else:
-            rec[name] = digit_ranked[:default_n]
+            rec[name] = sorted(digit_ranked[:default_n])
 
     return rec, pos_scores, digit_scores, enabled
 
@@ -755,20 +755,20 @@ def make_random_recommendations():
     two_pos = sorted(pos_strength[:2])
     rec["二定"] = {
         "单码": [(pos_names[p], random.randint(0, 9)) for p in two_pos],
-        "包码": [(pos_names[p], rand_digits(3)) for p in two_pos],
+        "包码": [(pos_names[p], sorted(rand_digits(3))) for p in two_pos],
     }
     three_pos = sorted(pos_strength[:3])
     rec["三定"] = {
         "单码": [(pos_names[p], random.randint(0, 9)) for p in three_pos],
-        "包码": [(pos_names[p], rand_digits(3)) for p in three_pos],
+        "包码": [(pos_names[p], sorted(rand_digits(3))) for p in three_pos],
     }
     rec["四定"] = {
         "单码": [(pos_names[p], random.randint(0, 9)) for p in range(4)],
-        "包码": [(pos_names[p], rand_digits(2)) for p in range(4)],
+        "包码": [(pos_names[p], sorted(rand_digits(2))) for p in range(4)],
     }
-    rec["二现"] = rand_digits(2)
-    rec["三现"] = rand_digits(3)
-    rec["四现"] = rand_digits(4)
+    rec["二现"] = sorted(rand_digits(2))
+    rec["三现"] = sorted(rand_digits(3))
+    rec["四现"] = sorted(rand_digits(4))
     return rec
 
 
