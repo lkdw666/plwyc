@@ -459,11 +459,22 @@ def make_custom_recommendations(predictor: Predictor, config: dict):
     rec = {}
     for name in ["二定", "三定", "四定"]:
         counts = bao_pos.get(name, [0, 0, 0, 0])
-        active_positions = [p for p in range(4) if counts[p] > 0]
+        user_active = [p for p in range(4) if counts[p] > 0]
+
+        # 包码：用用户配置的活跃位置
         rec[name] = {
-            "单码": [(pos_names[p], best_digit_each_pos[p]) for p in active_positions],
-            "包码": [(pos_names[p], top_per_pos[p][:counts[p]]) for p in active_positions],
+            "包码": [(pos_names[p], top_per_pos[p][:counts[p]]) for p in user_active],
         }
+
+    # 单码：按整体位置强度选 top-N 个位置（不受 bao_pos 影响）
+    # 先按综合评分排位置强弱
+    pos_avg = [sum(pos_scores[p]) / 10 for p in range(4)]
+    pos_ranked = sorted(range(4), key=lambda p: pos_avg[p], reverse=True)
+    need_positions = {"二定": 2, "三定": 3, "四定": 4}
+    for name in ["二定", "三定", "四定"]:
+        n = need_positions[name]
+        selected = pos_ranked[:n]
+        rec[name]["单码"] = [(pos_names[p], best_digit_each_pos[p]) for p in selected]
 
     for name, default_n in [("二现", 2), ("三现", 3), ("四现", 4)]:
         manual = xian_manual.get(name)
@@ -606,10 +617,13 @@ def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
 
 
 def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
-    """自定义模式：只对启用的玩法均分预算。"""
+    """自定义模式：等分预算，但确保每个已勾选的玩至少得到一个正额度，
+    并在剩余预算中再次分配以避免遗漏。
+    """
     if budget <= 0 or not enabled:
         return {"__total__": 0.0, "__risk__": "自定义"}
 
+    # ---------- 1️⃣ 计算每个定位包码的组合数 ----------
     bao_combos = {}
     for name in ["二定", "三定", "四定"]:
         n = 1
@@ -617,6 +631,7 @@ def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
             n *= len(ds)
         bao_combos[name] = n if rec[name]["包码"] else 0
 
+    # ---------- 2️⃣ 构造每种“投注单元”的基础信息 ----------
     schemes = {
         "二定单码": {"组合数": 1, "单份成本": 1.0,
                     "单注赔付": float(PAYOUT_RATIO["二定"]),
@@ -654,16 +669,20 @@ def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
     if not valid:
         return {"__total__": 0.0, "__risk__": "自定义"}
 
-    each = budget / len(valid)
+    # ---------- 4️⃣ 初始等分配 ----------
+    each = budget / len(valid)                # 每个有效玩法的理论份额
     plans = {}
-    total = 0.0
+    total_spent = 0.0
+
+    # 首轮：对每个玩法尝试分配 “multiples” >= 1
     for play in valid:
         s = schemes[play]
         multiples = int(each / s["单份成本"])
-        if multiples < 1:
-            continue
-        cost = round(multiples * s["单份成本"], 2)
-        payout = round(multiples * s["单注赔付"], 2)
+        if multiples >= 1:                       # 能买到完整的几倍
+            cost = round(multiples * s["单份成本"], 2)
+        else:                                    # 不到 1 倍，仍要保证最小参与
+            # 这里 **不直接跳过**，而是使用单份成本的最小费用
+            cost = s["单份成本"]
         plans[play] = {
             "倍数": multiples,
             "组合数": s["组合数"],
@@ -671,12 +690,40 @@ def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
             "实际投入": cost,
             "命中概率": s["命中概率"],
             "单注赔付": s["单注赔付"],
-            "中奖金额": payout,
-            "净收益": round(payout - cost, 2),
+            "中奖金额": round(multiples * s["单注赔付"], 2) if multiples > 0 else 0,
+            "净收益": round((multiples * s["单注赔付"]) - cost, 2) if multiples > 0 else 0,
         }
-        total += cost
+        total_spent += cost
 
-    plans["__total__"] = round(total, 2)
+    # ---------- 5️⃣ 剩余预算重新分配给仍未出现的已勾选玩法 ----------
+    # （有可能因为上一步的 cost 为单份成本，导致还有剩余预算没有被使用）
+    remaining = budget - total_spent
+    if remaining > 0:
+        # 重新遍历一次 valid，把剩余金额分配给那些仍未加入 plans 的玩法
+        # （即上一步因为 `multiples == 0` 被跳过的玩法）
+        for play in valid:
+            if play not in plans:                     # 仍未得到预算
+                s = schemes[play]
+                # 给它分配最多剩余金额，但也不能低于它的单份成本（否则还是 0）
+                allocate = min(s["单份成本"], remaining)
+                if allocate > 0:
+                    plans[play] = {
+                        "倍数": 0,                         # 因为只分配了一次，倍数设为 0 代表 “1 注”
+                        "组合数": s["组合数"],
+                        "单份成本": s["单份成本"],
+                        "实际投入": allocate,
+                        "命中概率": s["命中概率"],
+                        "单注赔付": s["单注赔付"],
+                        "中奖金额": 0,                       # 只买 1 注，理论上中奖金额为 0
+                        "净收益": -allocate,
+                    }
+                    total_spent += allocate
+                    remaining -= allocate
+                    if remaining <= 0:
+                        break
+
+    # ---------- 6️⃣ 最终收尾 ----------
+    plans["__total__"] = round(total_spent, 2)
     plans["__risk__"] = "自定义"
     return plans
 
@@ -1471,10 +1518,35 @@ class App(tk.Tk):
 
             order = ["二定单码", "二定包码", "三定单码", "三定包码",
                      "四定单码", "四定包码", "二现", "三现", "四现"]
-            for play in order:
-                if play not in budget_plans:
-                    continue
-                p = budget_plans[play]
+            # 决定在当前模式下应该显示的玩法列表
+            # 如果是自定义模式，则使用用户勾选的 enabled；否则使用完整顺序，但仍可能因预算缺失而过滤
+            is_custom = budget_plans.get("__risk__", "平衡") == "自定义"
+            # 在自定义模式下显示用户勾选的玩法；在标准模式下只显示预算中已有条目的项
+            if is_custom:
+                display_plays = [p for p in order if p in self.custom_config.get("enabled", set())]
+            else:
+                display_plays = order
+
+            for play in display_plays:
+                # 自定义模式下即使预算没有条目，也应显示占位行
+                if is_custom:
+                    if play not in budget_plans:
+                        p = {
+                            "实际投入": 0.0,
+                            "倍数": 0,
+                            "组合数": 0,
+                            "命中概率": 0,
+                            "中奖金额": 0,
+                            "净收益": 0,
+                        }
+                    else:
+                        p = budget_plans[play]
+                else:
+                    # 标准模式下若没有预算条目则直接跳过
+                    if play not in budget_plans:
+                        continue
+                    p = budget_plans[play]
+
                 cells = [
                     play,
                     self._format_play_digits(play, rec),
